@@ -1,0 +1,75 @@
+cabal-version:      3.4
+name:               sdl2mvc
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             Frank Staals
+maintainer:         frank@fstaals.net
+-- copyright:
+category:           Graphics
+build-type:         Simple
+extra-doc-files:    changelog.org
+-- extra-source-files:
+
+common setup
+    default-language: GHC2021
+    build-depends:
+          base            >= 4.16.3.0
+        , sdl2            >= 2.5.3
+        , sdl2-cairo      >= 0.2
+        , lens            >= 5
+        -- , text                    >= 2.0
+        -- , linear                  >= 1.10
+
+        , template-haskell
+
+    default-extensions:
+        DataKinds
+      , TypeFamilies
+      , GADTs
+      , KindSignatures
+      , ScopedTypeVariables
+      , DerivingStrategies
+      , DerivingVia
+      , GeneralizedNewtypeDeriving
+      , DeriveGeneric
+      , DeriveFunctor
+      , PatternSynonyms
+      , TupleSections
+      , LambdaCase
+      , ViewPatterns
+      , FunctionalDependencies
+
+
+    ghc-options: -O2 -Wall -fno-warn-unticked-promoted-constructors -fno-warn-type-defaults
+
+
+library
+    import:           setup
+    exposed-modules:
+        SDL2MVC
+    -- other-modules:
+    -- other-extensions:
+    build-depends:    base ^>=4.16.3.0
+    hs-source-dirs:   src
+
+executable sdl2mvc
+    import:           setup
+    main-is:          Main.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends: sdl2mvc
+    hs-source-dirs:   app
+
+test-suite sdl2mvc-test
+    import:           setup
+
+    -- other-modules:
+    -- other-extensions:
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        sdl2mvc
