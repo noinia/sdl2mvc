@@ -20,7 +20,8 @@ common setup
         , sdl2            >= 2.5.3
         , sdl2-cairo      >= 0.2
         , lens            >= 5
-        -- , text                    >= 2.0
+        , text                    >= 1.2
+        , stm                     >= 2.5.1
         -- , linear                  >= 1.10
 
         , template-haskell
