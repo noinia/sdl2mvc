@@ -86,6 +86,20 @@ data Action model = Skip
                   | Quit
                   deriving (Show,Eq)
 
+
+data Effect model action = Effect model
+                                  [IO action]
+
+noEff       :: model -> Effect model action
+noEff model = Effect model []
+
+(<#) :: model -> IO action -> Effect model action
+model <# act = Effect model [act]
+
+
+
+
+
 data Drawing = Blank
              | Color (V4 Word8) Drawing
              deriving (Eq,Show)
