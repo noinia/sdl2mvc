@@ -87,45 +87,25 @@ data Action model = Skip
                   deriving (Show,Eq)
 
 
-data Effect model action = Effect model
-                                  [IO action]
-
-noEff       :: model -> Effect model action
-noEff model = Effect model []
-
-(<#) :: model -> IO action -> Effect model action
-model <# act = Effect model [act]
 
 
 
 
 
-data Drawing = Blank
-             | Color (V4 Word8) Drawing
-             deriving (Eq,Show)
 
 
 
 
-data Model = Model { _drawing     :: Drawing
-                   , _title   :: Text
-                   }
-           deriving (Show)
-makeLenses ''Model
 
-data SDLApp = SDLApp { _appModel :: Model
-                     }
-makeLenses ''SDLApp
-
-
-myApp :: SDLApp
+myApp :: Renderer -> SDLApp
 myApp = SDLApp (Model Blank "foo")
 
 handle             :: Model -> Event -> Action Model
 handle model event
   -- | traceShow event False = undefined
   | eventIsPress KeycodeQ = Quit
-  | eventIsPress KeycodeR = traceShowId $ Redraw $ model&drawing .~ Color (V4 0 0 255 255) Blank
+  | eventIsPress KeycodeR = traceShowId $ Redraw $ model&drawing .~ Color (V4 255 0 0 255) Blank
+  | eventIsPress KeycodeB = traceShowId $ Redraw $ model&drawing .~ Color (V4 0 0 255 255) Blank
   | otherwise             = Skip
   where
     eventIsPress keyCode =
@@ -135,67 +115,61 @@ handle model event
             keysymKeycode (keyboardEventKeysym keyboardEvent) == keyCode
           _ -> False
 
-handleAll        :: Model -> [Event] -> Action Model
-handleAll model0 = go model0 Skip
+
+
+data ContinueX model = QuitX
+                     | Continue model [Renderer -> IO ()]
+
+
+
+handleAll        :: Model -> [Event] -> ContinueX Model
+handleAll model0 = go (Continue model0 [])
   where
-    go model act = \case
-      []     -> act
+    go k@(Continue model scheduled) = \case
+      []     -> k
       (e:es) -> case handle model e of
-                  Quit                 -> Quit
-                  Skip                 -> go model  act es
-                  act'@(Redraw model') -> go model' act' es
+                  Quit            -> QuitX
+                  Skip            -> go k es
+                  (Redraw model') -> go (Continue model' (redraw model' : scheduled) ) es
+    go QuitX                       = const QuitX
 
--- handle                                  :: Model -> [Event] -> Action Model
--- handle model events
---     | any (eventIsPress KeycodeQ) events = Quit
---     | any (eventIsPress KeycodeR) events =
---         Redraw $ model&drawing .~ Color (V4 0 0 255 255) Blank
---     | otherwise                          = Skip
---   where
---     eventIsPress keyCode event =
---         case eventPayload event of
---           KeyboardEvent keyboardEvent ->
---             keyboardEventKeyMotion keyboardEvent == Pressed &&
---             keysymKeycode (keyboardEventKeysym keyboardEvent) == keyCode
---           _ -> False
 
-render          :: Renderer -> Drawing -> IO ()
-render renderer = go
-  where
-    go = \case
-      Blank     -> pure ()
-      Color c d -> do rendererDrawColor renderer $= c
-                      go d
-
-appLoop              :: SDLApp -> Renderer -> IO ()
-appLoop app renderer = do
-    events <- pollEvents
-    case traceShowId $ handleAll (app^.appModel) events of
-      Quit     -> pure ()
-      Skip     -> continue app
-      Redraw m -> do render renderer (m^.drawing)
-                     clear renderer
-                     present renderer
-                     continue $ app&appModel .~ m
-  where
-    continue app' = appLoop app' renderer
-
--- | Starts the app
-startApp              :: SDLApp -> Renderer -> IO ()
-startApp app renderer = do rendererDrawColor renderer $= V4 255 255 255 255
+redraw                :: Model -> Renderer -> IO ()
+redraw model renderer = do render renderer (model^.drawing)
                            clear renderer
                            present renderer
-                           appLoop app renderer
+
+appLoop     :: SDLApp -> IO ()
+appLoop app = do
+    events <- pollEvents
+    case handleAll (app^.appModel) events of
+      QuitX                    -> pure ()
+      Continue model scheduled -> do mapM_ ($ app^.renderer) scheduled -- fixme
+                                     appLoop (app&appModel .~ model)
+      -- Skip     -> continue app
+      -- Redraw m -> do render renderer (m^.drawing)
+      --                clear renderer
+      --                present renderer
+      --                continue $ app&appModel .~ m
+  -- where
+  --   continue app' = appLoop app' renderer
+
+-- | Starts the app
+startApp     :: SDLApp -> IO ()
+startApp app = do rendererDrawColor (app^.renderer) $= V4 255 255 255 255
+                  clear $ app^.renderer
+                  present $ app^.renderer
+                  appLoop app
 
 main :: IO ()
 main = mainWith myApp
 
-mainWith     :: SDLApp -> IO ()
+mainWith     :: (Renderer -> SDLApp) -> IO ()
 mainWith app = do
   initializeAll
-  window <- createWindow (app^.appModel.title) defaultWindow
-  renderer <- createRenderer window (-1) defaultRenderer
-  startApp app renderer
+  window <- createWindow "mytitle" defaultWindow
+  renderer' <- createRenderer window (-1) defaultRenderer
+  startApp (app renderer')
   destroyWindow window
 
 

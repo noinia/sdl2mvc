@@ -16,15 +16,21 @@ extra-doc-files:    changelog.org
 common setup
     default-language: GHC2021
     build-depends:
-          base            >= 4.16.3.0
-        , sdl2            >= 2.5.3
-        , sdl2-cairo      >= 0.2
-        , lens            >= 5
+          base                    >= 4.16.3.0
+        , sdl2                    >= 2.5.3
+        , sdl2-cairo              >= 0.2
+        , lens                    >= 5
         , text                    >= 1.2
         , stm                     >= 2.5.1
-        -- , linear                  >= 1.10
+        -- , hgeometry               >= 1.0
+        -- , hgeometry-kernel        >= 1.0
+        -- , hgeometry-combinatorial >= 0.15
 
-        , template-haskell
+        -- , process == 1.6.16.0
+
+        -- , linear          1        >= 1.10
+
+        -- , template-haskell
 
     default-extensions:
         DataKinds
@@ -53,7 +59,6 @@ library
         SDL2MVC
     -- other-modules:
     -- other-extensions:
-    build-depends:    base ^>=4.16.3.0
     hs-source-dirs:   src
 
 executable sdl2mvc
