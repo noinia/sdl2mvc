@@ -12,25 +12,24 @@
 module SDL2MVC.Drawing
   ( Drawing(..)
   , View(..)
+  , runRender
   ) where
 
 import           Control.Lens
-import           Control.Monad
 import qualified Data.Map as Map
-import           Data.Text (Text)
 import           Data.Word
-import           SDL
-
+import           SDL (Renderer, V4(..), ($=), rendererDrawColor)
+import qualified SDL2MVC.Event as Event
 --------------------------------------------------------------------------------
 
-data Event = OnClick
-           | OnEnter
-           | OnExit
-           deriving (Show,Eq)
 
-newtype Attributes action = Attributes (Map.Map Event action)
-  deriving (Show,Eq)
+newtype Attributes action = Attributes (Map.Map Event.Event action)
+  deriving stock (Show,Functor,Foldable,Traversable)
 
+instance Eq (Attributes action) where
+  -- | Tets only whether the keys are the same.
+  (Attributes m) == (Attributes m') = Map.keys m == Map.keys m'
+  -- TODO: this is not the right thing to do in the end ...
 
 type Rectangle = () -- placeholder
 
@@ -39,7 +38,7 @@ type Rectangle = () -- placeholder
 data Drawing action = Blank
                     | Filled (V4 Word8) (Drawing action)
                     | Rect Rectangle (Attributes action)
-                    deriving (Eq,Show)
+                    deriving stock (Eq,Show,Functor,Foldable,Traversable)
 
 
 -- | The view, i.e. the thing we end up producing
@@ -48,8 +47,8 @@ newtype View action = View (Drawing action)
 --------------------------------------------------------------------------------
 
 -- | Given a renderer and a drawing that we wish to draw; render the drawing
-render          :: Renderer -> Drawing action -> IO ()
-render renderer = go
+runRender          :: Renderer -> Drawing action -> IO ()
+runRender renderer = go
   where
     go = \case
       Blank      -> pure ()

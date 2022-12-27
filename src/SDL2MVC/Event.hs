@@ -1,19 +1,19 @@
 --------------------------------------------------------------------------------
 -- |
--- Module      :  SDL2MVC
+-- Module      :  SDL2MVC.Event
 -- Copyright   :  (C) Frank Staals
 -- License     :  see the LICENSE file
 -- Maintainer  :  Frank Staals
 --
--- Main SDL2MVC Module exporting the various submodules.
+-- Events that we support in SDL Apps
 --
 --------------------------------------------------------------------------------
-module SDL2MVC
-  ( module SDL2MVC.SDLApp
-  , module SDL2MVC.Drawing
-  , module SDL2MVC.Effect
+module SDL2MVC.Event
+  ( Event(..)
   ) where
 
-import SDL2MVC.SDLApp
-import SDL2MVC.Drawing
-import SDL2MVC.Effect
+-- | Events that we support
+data Event = OnClick
+           | OnEnter
+           | OnExit
+           deriving (Show,Eq)

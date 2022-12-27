@@ -7,18 +7,76 @@ import Control.Monad
 import Data.Text (Text)
 import Data.Word
 import SDL
-import SDL2MVC (someFunc)
-
+import SDL2MVC.SDLApp
+import SDL2MVC.Drawing
+import SDL2MVC.Effect
 
 import Debug.Trace
 
+--------------------------------------------------------------------------------
+-- * Model
+
+type Color = V4 Word8
+
+newtype Model = Model { _theColor :: Color }
+  deriving (Show,Eq)
+
+makeLenses ''Model
+
+blue = V4 0 255 0 0
+
+initialModel = Model { _theColor = blue }
+
+
+--------------------------------------------------------------------------------
+-- * Controller
+
+data MyAction = Started
+              | HandleEvent SDL.Event
+  deriving (Show,Eq)
+
+update   :: Model -> MyAction -> Effect (Action MyAction Model) Model
+update m = \case
+  Started       -> m <# do print "Started"
+                           pure Skip
+  HandleEvent e
+    | eventIsPress KeycodeQ -> m <# pure Quit
+    | eventIsPress KeycodeR -> noEff $ m&theColor .~ V4 255 0 0 255
+    | eventIsPress KeycodeB -> noEff $ m&theColor .~ V4 0 0 255 255
+    | otherwise             -> noEff m
+    where
+      eventIsPress keyCode =
+          case eventPayload e of
+            KeyboardEvent keyboardEvent ->
+              keyboardEventKeyMotion keyboardEvent == Pressed &&
+              keysymKeycode (keyboardEventKeysym keyboardEvent) == keyCode
+            _ -> False
+
+--------------------------------------------------------------------------------
+-- * View
+
+render   :: Model -> View (Action MyAction Model)
+render m = View $ Filled (m^.theColor) Blank
+
+--------------------------------------------------------------------------------
+-- * Main
+
+myApp :: AppConfig MyAction Model
+myApp = AppConfig { _update            = update
+                  , _render            = render
+                  , _startupAction     = Started
+                  , _interpretSDLEvent = HandleEvent
+                  }
+
+main :: IO ()
+main = runApp initialModel myApp
+
+
+
+
 {-
 
-data Effect action model = Effect model [Sub action]
-
-
-data Drawing action model = Blank
-                          -- | Rectangle
+{-
 
 data App action model = App { _model         :: model
                             , _update        :: model -> action -> Effect action model
@@ -178,3 +236,5 @@ mainWith app = do
 
 renderToFile :: FilePath -> Drawing -> IO ()
 renderToFile fp = undefined
+
+-}

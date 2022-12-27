@@ -22,6 +22,8 @@ common setup
         , lens                    >= 5
         , text                    >= 1.2
         , stm                     >= 2.5.1
+        , async                   >= 2.2
+        , containers              >= 0.6
         -- , hgeometry               >= 1.0
         -- , hgeometry-kernel        >= 1.0
         -- , hgeometry-combinatorial >= 0.15
@@ -57,6 +59,14 @@ library
     import:           setup
     exposed-modules:
         SDL2MVC
+        SDL2MVC.Drawing
+        SDL2MVC.Effect
+        SDL2MVC.SDLApp
+        SDL2MVC.PublicModel
+        SDL2MVC.Step
+        SDL2MVC.Event
+
+
     -- other-modules:
     -- other-extensions:
     hs-source-dirs:   src

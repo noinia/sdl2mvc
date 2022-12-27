@@ -14,6 +14,8 @@ module SDL2MVC.Effect
   , (<#)
   ) where
 
+import Data.Bifunctor
+
 --------------------------------------------------------------------------------
 
 -- | The return type to use for te update function of the controller;
@@ -21,12 +23,17 @@ module SDL2MVC.Effect
 -- actions to run.
 --
 --
-data Effect model action = Effect model [IO action]
+data Effect action model = Effect model [IO action]
+                         deriving (Functor,Foldable,Traversable)
+
+instance Bifunctor Effect where
+  bimap f g (Effect m as) = Effect (g m) (fmap f <$> as)
+
 
 -- | Return the model as is; don't schedule any actions.
-noEff       :: model -> Effect model action
+noEff       :: model -> Effect action model
 noEff model = Effect model []
 
 -- | Schedule a single action
-(<#) :: model -> IO action -> Effect model action
+(<#) :: model -> IO action -> Effect action model
 model <# act = Effect model [act]
