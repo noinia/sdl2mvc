@@ -30,10 +30,10 @@ import           Control.Monad (when)
 import           Data.Bifunctor
 import           GHC.Natural
 import           SDL
-import           SDL2MVC.Drawing
 import           SDL2MVC.Effect
 import           SDL2MVC.PublicModel (PublicModel, theModel, title)
 import qualified SDL2MVC.PublicModel as PublicModel
+import           SDL2MVC.View
 
 --------------------------------------------------------------------------------
 

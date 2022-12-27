@@ -8,7 +8,7 @@ import Data.Text (Text)
 import Data.Word
 import SDL
 import SDL2MVC.SDLApp
-import SDL2MVC.Drawing
+import SDL2MVC.View
 import SDL2MVC.Effect
 import SDL2MVC.SimpleSDLEvent
 
@@ -65,7 +65,7 @@ update m = \case
 -- * View
 
 render   :: Model -> View (Action MyAction Model)
-render m = View $ Filled (m^.theColor) Blank
+render m = Filled (m^.theColor) Blank
 
 --------------------------------------------------------------------------------
 -- * Main
@@ -89,7 +89,7 @@ main = runApp initialModel myApp
 
 data App action model = App { _model         :: model
                             , _update        :: model -> action -> Effect action model
-                            , _view          :: model -> Drawing action model
+                            , _view          :: model -> View action model
                             , _subs          :: [Sub action]
                             , _initialAction :: action
                             }
@@ -97,17 +97,17 @@ data App action model = App { _model         :: model
 
 
 data Model action model = Model { _appModel :: model
-                                , _drawing  :: Drawing action model
+                                , _drawing  :: View action model
                                 }
 
 data Action action model = Quit
                          | Skip
                          | AppAction action
-                         | Redraw (Drawing action model)
+                         | Redraw (View action model)
 
 update = undefined
 
-view'   :: Model -> Drawing Action Model
+view'   :: Model -> View Action Model
 view' _ = Blank
 
 myApp :: App Action Model
@@ -243,7 +243,7 @@ mainWith app = do
 
 --------------------------------------------------------------------------------
 
-renderToFile :: FilePath -> Drawing -> IO ()
+renderToFile :: FilePath -> View -> IO ()
 renderToFile fp = undefined
 
 -}

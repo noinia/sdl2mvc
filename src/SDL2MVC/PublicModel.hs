@@ -26,7 +26,7 @@ module SDL2MVC.PublicModel
 import           Control.Lens
 import           Data.Text (Text)
 import           SDL (Renderer, present, clear)
-import           SDL2MVC.Drawing
+import           SDL2MVC.View
 import           SDL2MVC.Effect
 
 
@@ -35,7 +35,7 @@ import           SDL2MVC.Effect
 
 -- | The public part of the model of an SDL App; stores the main
 -- application info like what we should draw, window titles etc.
-data PublicModel action model = PublicModel { _drawing  :: Drawing action
+data PublicModel action model = PublicModel { _drawing  :: View action
                                             , _title    :: Text
                                             , _theModel :: model
                                             }
@@ -70,7 +70,7 @@ update   :: PublicModel action model
          -> Action action model
          -> Effect () (PublicModel action model)
 update m = \case
-  Redraw renderer renderF -> let View drawing' = renderF (m^.theModel)
+  Redraw renderer renderF -> let drawing' = renderF (m^.theModel)
                              in (m&drawing .~ drawing') <# do runRender renderer drawing'
                                                               clear renderer
                                                               present renderer
@@ -82,8 +82,8 @@ update m = \case
 -- | Renders the public model, (by simply taking the drawing that is
 -- stored and rendering it)
 rerender   :: PublicModel action model -> View action
-rerender m = View $ m^.drawing
+rerender m = m^.drawing
 
 -- -- | Rerenders the current view based on the existing drawing
--- redraw            :: Renderer -> Drawing action -> IO ()
+-- redraw            :: Renderer -> View action -> IO ()
 -- redraw renderer d =

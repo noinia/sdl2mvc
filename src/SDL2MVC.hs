@@ -10,10 +10,10 @@
 --------------------------------------------------------------------------------
 module SDL2MVC
   ( module SDL2MVC.SDLApp
-  , module SDL2MVC.Drawing
+  , module SDL2MVC.View
   , module SDL2MVC.Effect
   ) where
 
 import SDL2MVC.SDLApp
-import SDL2MVC.Drawing
+import SDL2MVC.View
 import SDL2MVC.Effect

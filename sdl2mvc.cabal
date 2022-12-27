@@ -59,7 +59,7 @@ library
     import:           setup
     exposed-modules:
         SDL2MVC
-        SDL2MVC.Drawing
+        SDL2MVC.View
         SDL2MVC.Effect
         SDL2MVC.SDLApp
         SDL2MVC.PublicModel

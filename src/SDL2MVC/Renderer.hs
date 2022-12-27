@@ -17,10 +17,15 @@ import           Control.Lens
 import           Data.Text (Text)
 import           SDL (present, clear)
 import qualified SDL
-import           SDL2MVC.Drawing
+import           SDL2MVC.View
 import           SDL2MVC.Effect
 
 
-data Renderer action = Renderer { _drawing  :: Drawing action
+--------------------------------------------------------------------------------
+
+data Renderer action = Renderer { _drawing  :: View action
                                 , _renderer :: SDL.Renderer
+                                , _texture  :: SDL.Texture
                                 }
+
+createCairoTexture'
