@@ -10,6 +10,7 @@ import SDL
 import SDL2MVC.SDLApp
 import SDL2MVC.Drawing
 import SDL2MVC.Effect
+import SDL2MVC.SimpleSDLEvent
 
 import Debug.Trace
 
@@ -39,18 +40,26 @@ update   :: Model -> MyAction -> Effect (Action MyAction Model) Model
 update m = \case
   Started       -> m <# do print "Started"
                            pure Skip
-  HandleEvent e
-    | eventIsPress KeycodeQ -> m <# pure Quit
-    | eventIsPress KeycodeR -> noEff $ m&theColor .~ V4 255 0 0 255
-    | eventIsPress KeycodeB -> noEff $ m&theColor .~ V4 0 0 255 255
-    | otherwise             -> noEff m
-    where
-      eventIsPress keyCode =
-          case eventPayload e of
-            KeyboardEvent keyboardEvent ->
-              keyboardEventKeyMotion keyboardEvent == Pressed &&
-              keysymKeycode (keyboardEventKeysym keyboardEvent) == keyCode
-            _ -> False
+  HandleEvent e -> case e of
+    KeyPress KeycodeQ -> m <# pure Quit
+    KeyPress KeycodeR -> noEff $ m&theColor .~ V4 255 0 0 255
+    KeyPress KeycodeB -> noEff $ m&theColor .~ V4 0 0 255 255
+    MouseMove p       -> m <# do print p
+                                 pure Skip
+    _                 -> noEff m
+
+  -- HandleEvent e
+  --   | eventIsPress KeycodeQ -> m <# pure Quit
+  --   | eventIsPress KeycodeR -> noEff $ m&theColor .~ V4 255 0 0 255
+  --   | eventIsPress KeycodeB -> noEff $ m&theColor .~ V4 0 0 255 255
+  --   | otherwise             -> noEff m
+  --   where
+  --     eventIsPress keyCode =
+  --         case eventPayload e of
+  --           KeyboardEvent keyboardEvent ->
+  --             keyboardEventKeyMotion keyboardEvent == Pressed &&
+  --             keysymKeycode (keyboardEventKeysym keyboardEvent) == keyCode
+  --           _ -> False
 
 --------------------------------------------------------------------------------
 -- * View

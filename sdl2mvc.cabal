@@ -64,6 +64,7 @@ library
         SDL2MVC.SDLApp
         SDL2MVC.PublicModel
         SDL2MVC.Event
+        SDL2MVC.SimpleSDLEvent
 
 
     -- other-modules:
