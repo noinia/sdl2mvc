@@ -63,7 +63,6 @@ library
         SDL2MVC.Effect
         SDL2MVC.SDLApp
         SDL2MVC.PublicModel
-        SDL2MVC.Step
         SDL2MVC.Event
 
 

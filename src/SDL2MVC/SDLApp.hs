@@ -51,7 +51,7 @@ data AppAction action = Skip
 -- | SDL Actions, including "internal" ones
 data SDLAction action model =
     PublicModelAction (PublicModel.Action (Action action model) model)
-  | PollSDLEvents
+  | WaitSDLEvent
   | AppSpecificAction action
 
 -- instance Bifunctor SDLAction where
@@ -137,7 +137,7 @@ initializeSDLApp m appCfg = do
     initializeAll
     window <- createWindow (pm^.title) defaultWindow
     state  <- initializeState window [ AppAction $ AppSpecificAction (appCfg^.startupAction)
-                                     , AppAction PollSDLEvents
+                                     , AppAction WaitSDLEvent
                                      ]
     pure $ SDLApp { _appModel      = pm
                   , _internalState = state
@@ -199,9 +199,12 @@ runApp' app = go (app^.appModel)
               -> Effect (Action action model) (PublicModel' action model)
     update' m = \case
       PublicModelAction a  -> first (const Skip) $ PublicModel.update m a
-      PollSDLEvents        -> m <# do events <- pollEvents
-                                      scheduleAll (interpret <$> events)
-                                      pure $ AppAction PollSDLEvents
+      WaitSDLEvent         -> m <# do e <- waitEvent
+                                      scheduleAll [interpret e]
+                                      pure $ AppAction WaitSDLEvent
+      -- PollSDLEvents        -> m <# do events <- pollEvents
+      --                                 scheduleAll (interpret <$> events)
+      --                                 pure $ AppAction PollSDLEvents
       AppSpecificAction a  -> m&theModel %%~ flip (app^.appConfig.update) a
 
     -- | Interprets an sdl event
@@ -214,7 +217,6 @@ runApp' app = go (app^.appModel)
 
 
 ----------------------------------------
-
 
 
 
