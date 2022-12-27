@@ -24,6 +24,7 @@ module SDL2MVC.UIState
 
 import           Control.Lens
 import           Data.Text (Text)
+import           Foreign.C.Types (CInt)
 import qualified SDL
 import           SDL (($=))
 import qualified SDL.Cairo
@@ -68,22 +69,45 @@ initializeUIState t = UIState Blank <$> initializeWindowState t
 --------------------------------------------------------------------------------
 -- * Controller
 
-data Action action = Redraw (View action)
+data Action action = Clear
+                   | Redraw (View action)
                    | UpdateTitle Text
 
 -- | The update function
 update   :: UIState action
          -> Action action
-         -> Effect () (UIState action)
+         -> Effect (Maybe (Action action)) (UIState action)
 update m = \case
-  Redraw d -> (m&drawing .~ d) <# do runRender (m^.windowState.renderer) d
-                                     SDL.clear (m^.windowState.renderer)
-                                     SDL.present (m^.windowState.renderer)
-  UpdateTitle t           -> m <# do SDL.windowTitle (m^.windowState.window) $= t
+  Clear         -> m <# do size <- pure $ SDL.V2 600 800
+                             -- SDL.get SDL.windowSize -- (m^.windowState.window)
+                           pure . Just $ Redraw (blank size)
+  Redraw d      -> (m&drawing .~ d)         <# do rerender m d
+                                                  pure Nothing
+  UpdateTitle t -> m <# do SDL.windowTitle (m^.windowState.window) $= t
+                           pure Nothing
+
+
+
 
 --------------------------------------------------------------------------------
 -- * View
 
--- | Obtain a drawing of the current UI state
-rerender   :: UIState action -> View action
-rerender m = m^.drawing
+rerender     :: UIState action' -> View action -> IO ()
+rerender m d = do SDL.clear renderer'
+                  runRender texture' $ blank (SDL.V2 600 800)
+                  runRender texture' d
+                  SDL.copy renderer' texture' Nothing Nothing
+                  SDL.present renderer'
+  where
+    renderer' = m^.windowState.renderer
+    texture'  = m^.windowState.texture
+
+
+white = SDL.V4 255 255 255 255
+
+blank      :: SDL.V2 CInt -> View action
+blank size = Colored white
+           $ Rect r mempty
+  where
+    r :: SDL.Rectangle Double
+    r = SDL.Rectangle (SDL.P (SDL.V2 0 0)) (realToFrac <$> size)

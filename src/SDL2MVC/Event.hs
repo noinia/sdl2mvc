@@ -16,4 +16,4 @@ module SDL2MVC.Event
 data Event = OnClick
            | OnEnter
            | OnExit
-           deriving (Show,Eq)
+           deriving (Show,Eq,Ord)

@@ -65,7 +65,10 @@ update m = \case
 -- * View
 
 render   :: Model -> View (Action MyAction Model)
-render m = Colored (m^.theColor) Blank
+render m = Colored (m^.theColor)
+         $ Rect r mempty
+  where
+    r = SDL.Rectangle (P (V2 10 20)) (V2 200 300)
 
 --------------------------------------------------------------------------------
 -- * Main

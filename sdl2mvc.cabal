@@ -19,6 +19,7 @@ common setup
           base                    >= 4.16.3.0
         , sdl2                    >= 2.5.3
         , sdl2-cairo              >= 0.2
+        , cairo                   >= 0.13
         , lens                    >= 5
         , text                    >= 1.2
         , stm                     >= 2.5.1

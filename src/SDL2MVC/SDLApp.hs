@@ -192,7 +192,7 @@ runApp' app = go $ SDLAppModel (app^.uiState) (app^.model)
               -> SDLAction action model
               -> Effect (Action action model) (SDLAppModel action model)
     update' m = \case
-      UIStateAction a     -> first (const Skip)
+      UIStateAction a     -> first (maybe Skip (AppAction . UIStateAction))
                            $ m&theUIState %%~ flip UIState.update a
       -- PublicModelAction a  -> first (const Skip) $ PublicModel.update m a
       WaitSDLEvent         -> m <# do e <- waitEvent
