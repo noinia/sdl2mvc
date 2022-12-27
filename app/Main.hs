@@ -65,16 +65,17 @@ update m = \case
 -- * View
 
 render   :: Model -> View (Action MyAction Model)
-render m = Filled (m^.theColor) Blank
+render m = Colored (m^.theColor) Blank
 
 --------------------------------------------------------------------------------
 -- * Main
 
 myApp :: AppConfig MyAction Model
-myApp = AppConfig { _update            = update
-                  , _render            = render
-                  , _startupAction     = Started
-                  , _interpretSDLEvent = HandleEvent
+myApp = AppConfig { _update             = update
+                  , _render             = render
+                  , _startupAction      = Started
+                  , _interpretSDLEvent  = HandleEvent
+                  , _initialWindowTitle = "MyApp :)"
                   }
 
 main :: IO ()
