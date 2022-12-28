@@ -30,8 +30,8 @@ type Color = Colour Double
 
 -- | The various possible attributes
 data Attribute action v where
-  Fill    ::                Attribute action Color
   Stroke  ::                Attribute action Color
+  Fill    ::                Attribute action Color
   OnEvent :: Event.Event -> Attribute action action
   Opacity ::                Attribute action Double
 
@@ -46,31 +46,31 @@ instance GShow (Attribute action) where
   gshowsPrec = showsPrec
 
 instance GEq (Attribute action) where
-  geq Fill         Fill         = Just Refl
   geq Stroke       Stroke       = Just Refl
+  geq Fill         Fill         = Just Refl
   geq (OnEvent e)  (OnEvent e')
     | e == e'                   = Just Refl
   geq Opacity      Opacity      = Just Refl
   geq _            _            = Nothing
 
 instance GCompare (Attribute action) where
-  gcompare Fill         Fill         = GEQ
-  gcompare Fill         _            = GLT
-
-  gcompare Stroke       Fill         = GGT
   gcompare Stroke       Stroke       = GEQ
   gcompare Stroke       _            = GLT
 
-  gcompare (OnEvent _)  Fill         = GGT
+  gcompare Fill         Stroke       = GGT
+  gcompare Fill         Fill         = GEQ
+  gcompare Fill         _            = GLT
+
   gcompare (OnEvent _)  Stroke       = GGT
+  gcompare (OnEvent _)  Fill         = GGT
   gcompare (OnEvent e)  (OnEvent e') = case compare e e' of
                                          LT -> GLT
                                          EQ -> GEQ
                                          GT -> GGT
   gcompare (OnEvent _)  Opacity      = GLT
 
-  gcompare Opacity      Fill         = GGT
   gcompare Opacity      Stroke       = GGT
+  gcompare Opacity      Fill         = GGT
   gcompare Opacity      (OnEvent _)  = GGT
   gcompare Opacity      Opacity      = GEQ
 
@@ -99,8 +99,8 @@ pattern k :=> v = (k DSum.:=> Identity v)
 travAssignment   :: Applicative f
                  => (action -> f action') -> AttrAssignment action -> f (AttrAssignment action')
 travAssignment f = \case
-    Fill      :=> v -> pure $ Fill      :=> v
     Stroke    :=> v -> pure $ Stroke    :=> v
+    Fill      :=> v -> pure $ Fill      :=> v
     OnEvent e :=> v -> (OnEvent e :=>) <$> f v
     Opacity   :=> v -> pure $ Opacity   :=> v
 

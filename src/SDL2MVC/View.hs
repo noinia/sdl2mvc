@@ -113,6 +113,7 @@ withAttr k = \case
   Stroke    :=> c -> do let (RGB r g b) = toSRGB c
                         Cairo.setSourceRGB r g b
                         k
+                        Cairo.stroke
   OnEvent _ :=> _ -> pure ()
   Opacity   :=> o -> pure () -- TODO
 

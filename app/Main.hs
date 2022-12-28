@@ -25,6 +25,7 @@ newtype Model = Model { _theColor :: Color }
 
 makeLenses ''Model
 
+initialModel :: Model
 initialModel = Model { _theColor = blue }
 
 
@@ -47,24 +48,13 @@ update m = \case
                                  pure Skip
     _                 -> noEff m
 
-  -- HandleEvent e
-  --   | eventIsPress KeycodeQ -> m <# pure Quit
-  --   | eventIsPress KeycodeR -> noEff $ m&theColor .~ V4 255 0 0 255
-  --   | eventIsPress KeycodeB -> noEff $ m&theColor .~ V4 0 0 255 255
-  --   | otherwise             -> noEff m
-  --   where
-  --     eventIsPress keyCode =
-  --         case eventPayload e of
-  --           KeyboardEvent keyboardEvent ->
-  --             keyboardEventKeyMotion keyboardEvent == Pressed &&
-  --             keysymKeycode (keyboardEventKeysym keyboardEvent) == keyCode
-  --           _ -> False
-
 --------------------------------------------------------------------------------
 -- * View
 
 render   :: Model -> View (Action MyAction Model)
-render m = rectangle_ [ Fill :=> (m^.theColor) ] r
+render m = rectangle_ [ Fill   :=> (m^.theColor)
+                      , Stroke :=> black
+                      ] r
   where
     r = SDL.Rectangle (P (V2 10 20)) (V2 200 300)
 
