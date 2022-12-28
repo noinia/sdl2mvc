@@ -74,6 +74,7 @@ library
         SDL2MVC.Event
         SDL2MVC.SimpleSDLEvent
         SDL2MVC.Attribute
+        SDL2MVC.Render
 
 
     -- other-modules:

@@ -1,12 +1,12 @@
 module SDL2MVC.Attribute
   ( Attribute(..)
-  , Color, toRGBA
+  , Color-- , toRGBA
 
   , AttrAssignment
   , pattern (:=>)
 
   , Attributes
-  , fromList, toAttrList
+  , fromAttrList, toAttrList
   , attr
   , (!?)
   , foldMapAttrs, foldrAttrs
@@ -16,8 +16,6 @@ module SDL2MVC.Attribute
 import           Data.Traversable
 import           Control.Lens
 import           Data.Colour
-import qualified Data.Colour as Colour
-import           Data.Colour.SRGB
 import           Data.Constraint (Dict(..))
 import           Data.Constraint.Extras (ConstraintsFor(..))
 import qualified Data.Dependent.Map as DMap
@@ -25,25 +23,17 @@ import qualified Data.Dependent.Sum as DSum
 import           Data.GADT.Compare
 import           Data.GADT.Show
 import qualified SDL2MVC.Event as Event
-import           Linear.V4 (V4(..))
 
 --------------------------------------------------------------------------------
 
-type Color = AlphaColour Double
-
--- | retursn the R,G,B, and a values in in the range [0,1]
-toRGBA   :: Color -> V4 Double
-toRGBA c = let c'        = alphaColourConvert c
-               a         = alphaChannel c'
-               RGB r g b = toSRGB (c' `Colour.over` black)
-           in V4 r g b a
-
+type Color = Colour Double
 
 -- | The various possible attributes
 data Attribute action v where
   Fill    ::                Attribute action Color
   Stroke  ::                Attribute action Color
   OnEvent :: Event.Event -> Attribute action action
+  Opacity ::                Attribute action Double
 
 deriving instance Eq   (Attribute action v)
 deriving instance Ord  (Attribute action v)
@@ -60,6 +50,7 @@ instance GEq (Attribute action) where
   geq Stroke       Stroke       = Just Refl
   geq (OnEvent e)  (OnEvent e')
     | e == e'                   = Just Refl
+  geq Opacity      Opacity      = Just Refl
   geq _            _            = Nothing
 
 instance GCompare (Attribute action) where
@@ -76,14 +67,21 @@ instance GCompare (Attribute action) where
                                          LT -> GLT
                                          EQ -> GEQ
                                          GT -> GGT
+  gcompare (OnEvent _)  Opacity      = GLT
+
+  gcompare Opacity      Fill         = GGT
+  gcompare Opacity      Stroke       = GGT
+  gcompare Opacity      (OnEvent _)  = GGT
+  gcompare Opacity      Opacity      = GEQ
 
 instance ArgDict c (Attribute action) where
   type ConstraintsFor (Attribute action) c =
-    (c Color, c action)
+    (c Color, c action, c Double)
   argDict = \case
     Fill       -> Dict
     Stroke     -> Dict
     OnEvent {} -> Dict
+    Opacity    -> Dict
 
 -- | Attributes
 newtype Attributes action = Attributes (DMap.DMap (Attribute action) Identity)
@@ -104,6 +102,7 @@ travAssignment f = \case
     Fill      :=> v -> pure $ Fill      :=> v
     Stroke    :=> v -> pure $ Stroke    :=> v
     OnEvent e :=> v -> (OnEvent e :=>) <$> f v
+    Opacity   :=> v -> pure $ Opacity   :=> v
 
 instance Functor Attributes where
   fmap = fmapDefault
@@ -112,11 +111,11 @@ instance Foldable Attributes where
   foldMap = foldMapDefault
 
 instance Traversable Attributes where
-  traverse f = fmap fromList . traverse (travAssignment f) . toAttrList
+  traverse f = fmap fromAttrList . traverse (travAssignment f) . toAttrList
 
 -- | Creates the attributes from the list of assignments
-fromList :: [AttrAssignment action] -> Attributes action
-fromList = foldMap (\(k :=> v) -> attr k v)
+fromAttrList :: [AttrAssignment action] -> Attributes action
+fromAttrList = foldMap (\(k :=> v) -> attr k v)
 
 -- | Produces a list of assignments
 toAttrList                :: Attributes action -> [AttrAssignment action]

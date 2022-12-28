@@ -6,7 +6,7 @@
 -- License     :  see the LICENSE file
 -- Maintainer  :  Frank Staals
 --
--- MVC view on teh SDL Renderer
+-- MVC implementation of the UI State
 --
 --------------------------------------------------------------------------------
 module SDL2MVC.UIState
@@ -23,12 +23,15 @@ module SDL2MVC.UIState
   ) where
 
 import           Control.Lens
+import           Data.Colour.Names (white)
 import           Data.Text (Text)
 import           Foreign.C.Types (CInt)
 import qualified SDL
 import           SDL (($=))
 import qualified SDL.Cairo
+import           SDL2MVC.Attribute
 import           SDL2MVC.Effect
+import           SDL2MVC.Render
 import           SDL2MVC.View
 
 --------------------------------------------------------------------------------
@@ -71,6 +74,7 @@ initializeUIState t = UIState Blank <$> initializeWindowState t
 
 data Action action = Redraw (View action)
                    | UpdateTitle Text
+                   deriving (Eq)
 
 -- | The update function
 update   :: UIState action
@@ -108,13 +112,10 @@ rerender m d = do SDL.clear renderer'
 
 -- | filled white background
 blank      :: SDL.V2 CInt -> View action
-blank size = Colored white
-           $ Rect r mempty
+blank size = rectangle_ [Fill :=> white ] r
   where
     r :: SDL.Rectangle Double
     r = SDL.Rectangle (SDL.P (SDL.V2 0 0)) (realToFrac <$> size)
-
-    white = SDL.V4 255 255 255 255
 
 
   -- Clear         -> m <# do size <- pure $ SDL.V2 600 800

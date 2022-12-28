@@ -12,20 +12,21 @@
 module SDL2MVC.View
   ( View(..)
   , runRender
+
+
+  , Transformation(..)
+  , Geom(..)
   ) where
 
 import           Control.Lens
+import           Data.Colour.SRGB (RGB(..), toSRGB)
 import           Data.List.NonEmpty (NonEmpty(..))
-import qualified Data.List.NonEmpty as NonEmtpy
-import qualified Data.Map as Map
-import           Data.Word
 import           Foreign.C.Types (CInt)
 import qualified Graphics.Rendering.Cairo as Cairo
 import qualified SDL
 import           SDL (V4(..), V2(..), Point(..), Rectangle(..), _x, _y)
 import qualified SDL.Cairo
 import           SDL2MVC.Attribute
-import qualified SDL2MVC.Event as Event
 
 --------------------------------------------------------------------------------
 
@@ -86,40 +87,34 @@ runRender texture h = SDL.Cairo.withCairoTexture texture . withMathCoords h . go
 
       Geom g attrs  -> withAttrs attrs $ renderGeom g
 
-
-    renderGeom = \case
-      PointGeom p    -> do let (SDL.P (SDL.V2 px py)) = p
-                           Cairo.arc px py 2 0 (2*pi)
-      RectGeom r     -> do let Rectangle (P (V2 px py)) (V2 w h) = r
-                           Cairo.rectangle px py w h
-      PathGeom vs    -> renderPoly vs
-      PolygonGeom vs -> do renderPoly vs
-                           Cairo.closePath
-
+renderGeom :: Geom -> Cairo.Render ()
+renderGeom = \case
+    PointGeom p    -> do let (SDL.P (SDL.V2 px py)) = p
+                         Cairo.arc px py 2 0 (2*pi)
+    RectGeom r     -> do let Rectangle (P (V2 px py)) (V2 w h) = r
+                         Cairo.rectangle px py w h
+    PathGeom vs    -> renderPoly vs
+    PolygonGeom vs -> do renderPoly vs
+                         Cairo.closePath
+  where
     renderPoly (p:|vs) = do Cairo.newPath
                             Cairo.moveTo (p^._x) (p^._y)
                             mapM_ (\q -> Cairo.lineTo (q^._x) (q^._y)) vs
 
-    withAttrs ats r = foldrAttrs (flip withAttr) r ats
+withAttrs       :: Attributes action -> Cairo.Render () -> Cairo.Render ()
+withAttrs ats r = foldrAttrs (flip withAttr) r ats
 
-    withAttr   :: Cairo.Render () -> AttrAssignment action -> Cairo.Render ()
-    withAttr k = \case
-      Fill      :=> c -> do let (V4 r g b a) = toRGBA c
-                            Cairo.setSourceRGBA r g b a
-                            k
-                            Cairo.fill
-      Stroke    :=> c -> do let (V4 r g b a) = toRGBA c
-                            Cairo.setSourceRGBA r g b a
-                            k
-      OnEvent _ :=> _ -> pure ()
-
-      -- Colored c d   -> do let (SDL.V4 r g b a) = (\x -> realToFrac x / 255.0) <$> c
-      --                     Cairo.setSourceRGBA r g b a
-      --                     go d
-      --                     Cairo.fill
-      --   -- rendererDrawColor renderer $= c
-      --   --                   go d
-
+withAttr   :: Cairo.Render () -> AttrAssignment action -> Cairo.Render ()
+withAttr k = \case
+  Fill      :=> c -> do let (RGB r g b) = toSRGB c
+                        Cairo.setSourceRGB r g b
+                        k
+                        Cairo.fill
+  Stroke    :=> c -> do let (RGB r g b) = toSRGB c
+                        Cairo.setSourceRGB r g b
+                        k
+  OnEvent _ :=> _ -> pure ()
+  Opacity   :=> o -> pure () -- TODO
 
 
 -- | Flip the plane so that the origin is in the bottom left.

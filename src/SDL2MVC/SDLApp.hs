@@ -45,13 +45,14 @@ import           Data.Text (Text)
 data AppAction action = Skip
                       | Quit
                       | AppAction action
-                      deriving (Functor,Foldable,Traversable)
+                      deriving (Eq,Functor,Foldable,Traversable)
 
 -- | SDL Actions, including "internal" ones
 data SDLAction action model =
     UIStateAction (UIState.Action (Action action model))
   | WaitSDLEvent
   | AppSpecificAction action
+  deriving (Eq)
 
 -- instance Bifunctor SDLAction where
 --   bimap f g = \case
@@ -143,7 +144,7 @@ makeLenses  ''SDLAppModel
 -- * Controller
 
 -- | Initializes and runs the app
-runApp           :: Eq model
+runApp           :: (Eq model, Eq action)
                  => model
                  -- ^ Initial model
                  -> AppConfig action model
@@ -152,7 +153,7 @@ runApp           :: Eq model
 runApp m0 appCfg = initializeSDLApp m0 appCfg >>= runApp'
 
 -- | Runs the app
-runApp'     :: forall action model. Eq model
+runApp'     :: forall action model. (Eq model, Eq action)
             => SDLApp action model -> IO ()
 runApp' app = go $ SDLAppModel (app^.uiState) (app^.model)
   where
