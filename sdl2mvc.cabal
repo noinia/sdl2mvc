@@ -25,6 +25,13 @@ common setup
         , stm                     >= 2.5.1
         , async                   >= 2.2
         , containers              >= 0.6
+        , dependent-map           >= 0.4
+        , dependent-sum           >= 0.6
+        -- , some                    >= 1.0.1
+        , constraints-extras      >= 0.3
+        , constraints             >= 0.10
+        , colour                  >= 2.3.6
+        , linear                  >= 1.0
         -- , hgeometry               >= 1.0
         -- , hgeometry-kernel        >= 1.0
         -- , hgeometry-combinatorial >= 0.15
@@ -66,6 +73,7 @@ library
         SDL2MVC.UIState
         SDL2MVC.Event
         SDL2MVC.SimpleSDLEvent
+        SDL2MVC.Attribute
 
 
     -- other-modules:

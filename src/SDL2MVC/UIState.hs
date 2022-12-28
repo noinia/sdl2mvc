@@ -92,10 +92,11 @@ update m = \case
 rerender     :: UIState action' -> View action -> IO ()
 rerender m d = do SDL.clear renderer'
                   tInfo <- SDL.queryTexture texture'
-                  let size = SDL.V2 (SDL.textureWidth tInfo) (SDL.textureHeight tInfo)
-                  runRender texture' $ blank size
+                  let size = SDL.V2 (SDL.textureWidth tInfo) h
+                      h    = SDL.textureHeight tInfo
+                  runRender texture' h $ blank size
                   -- cleared the renderer and the texture
-                  runRender texture' d
+                  runRender texture' h d
                   -- render the drawing onto the texture
                   SDL.copy renderer' texture' Nothing Nothing
                   SDL.present renderer'
@@ -103,6 +104,7 @@ rerender m d = do SDL.clear renderer'
   where
     renderer' = m^.windowState.renderer
     texture'  = m^.windowState.texture
+
 
 -- | filled white background
 blank      :: SDL.V2 CInt -> View action
