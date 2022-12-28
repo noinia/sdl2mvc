@@ -52,11 +52,16 @@ update m = \case
 -- * View
 
 render   :: Model -> View (Action MyAction Model)
-render m = rectangle_ [ Fill   :=> (m^.theColor)
-                      , Stroke :=> black
-                      ] r
+render m = group_ [ rectangle_ [ Fill   :=> (m^.theColor)
+                               , Stroke :=> black
+                               ] r
+                  , rectangle_ [ Stroke :=> green ] r2
+                  , text_ [ Stroke :=> black] (P (V2 400 400)) "test"
+                  ]
+
   where
     r = SDL.Rectangle (P (V2 10 20)) (V2 200 300)
+    r2 = SDL.Rectangle (P (V2 100 300)) (V2 300 200)
 
 --------------------------------------------------------------------------------
 -- * Main

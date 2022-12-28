@@ -21,8 +21,10 @@ module SDL2MVC.View
 import           Control.Lens
 import           Data.Colour.SRGB (RGB(..), toSRGB)
 import           Data.List.NonEmpty (NonEmpty(..))
+import           Data.Text (Text)
 import           Foreign.C.Types (CInt)
 import qualified Graphics.Rendering.Cairo as Cairo
+import qualified Graphics.Rendering.Cairo.Matrix as Matrix
 import qualified SDL
 import           SDL (V4(..), V2(..), Point(..), Rectangle(..), _x, _y)
 import qualified SDL.Cairo
@@ -53,6 +55,7 @@ data Geom =
   | RectGeom     (Rectangle R)
   | PathGeom     (NonEmpty (Point V2 R))
   | PolygonGeom  (NonEmpty (Point V2 R))
+  | TextGeom     (Point V2 R) Text
   deriving stock (Show,Eq,Ord)
 
 -- | A drawing is someting that we can render. Elements may contain
@@ -85,7 +88,8 @@ runRender texture h = SDL.Cairo.withCairoTexture texture . withMathCoords h . go
 
       Group ds      -> mapM_ go ds
 
-      Geom g attrs  -> withAttrs attrs $ renderGeom g
+      Geom g attrs  -> do Cairo.newPath
+                          withAttrs attrs $ renderGeom g
 
 renderGeom :: Geom -> Cairo.Render ()
 renderGeom = \case
@@ -96,6 +100,8 @@ renderGeom = \case
     PathGeom vs    -> renderPoly vs
     PolygonGeom vs -> do renderPoly vs
                          Cairo.closePath
+    TextGeom p t   -> do Cairo.moveTo (p^._x) (p^._y)
+                         Cairo.showText t
   where
     renderPoly (p:|vs) = do Cairo.newPath
                             Cairo.moveTo (p^._x) (p^._y)
@@ -106,14 +112,14 @@ withAttrs ats r = foldrAttrs (flip withAttr) r ats
 
 withAttr   :: Cairo.Render () -> AttrAssignment action -> Cairo.Render ()
 withAttr k = \case
-  Fill      :=> c -> do let (RGB r g b) = toSRGB c
+  Fill      :=> c -> do k
+                        let (RGB r g b) = toSRGB c
                         Cairo.setSourceRGB r g b
-                        k
-                        Cairo.fill
-  Stroke    :=> c -> do let (RGB r g b) = toSRGB c
+                        Cairo.fillPreserve
+  Stroke    :=> c -> do k
+                        let (RGB r g b) = toSRGB c
                         Cairo.setSourceRGB r g b
-                        k
-                        Cairo.stroke
+                        Cairo.strokePreserve
   OnEvent _ :=> _ -> pure ()
   Opacity   :=> o -> pure () -- TODO
 
@@ -123,5 +129,7 @@ withMathCoords       :: CInt -> Cairo.Render () -> Cairo.Render ()
 withMathCoords h act = do Cairo.save
                           Cairo.scale 1 (-1)
                           Cairo.translate 0 (negate $ realToFrac h)
+                          -- Cairo.setFontMatrix (Matrix.translate 0 (negate $ realToFrac h)
+                          --                     (Matrix.scale 1 (-1) Matrix.identity))
                           act
                           Cairo.restore
