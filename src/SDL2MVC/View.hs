@@ -56,6 +56,7 @@ data Geom =
   | PathGeom     (NonEmpty (Point V2 R))
   | PolygonGeom  (NonEmpty (Point V2 R))
   | TextGeom     (Point V2 R) Text
+  | ArcGeom      (Point V2 R) R R R -- center, radius, starting angle, cw ending angle in radians.
   deriving stock (Show,Eq,Ord)
 
 -- | A drawing is someting that we can render. Elements may contain
@@ -76,32 +77,36 @@ data View action =
 runRender            :: SDL.Texture
                      -> CInt -- ^ Height of the texture we are rendering to
                      -> View action -> IO ()
-runRender texture h = SDL.Cairo.withCairoTexture texture . withMathCoords h . go
-  where
-    go :: View action -> Cairo.Render ()
-    go = \case
-      Blank         -> pure ()
-      Transform t d -> do Cairo.save
-                          interpret t
-                          go d
-                          Cairo.restore
+runRender texture h = SDL.Cairo.withCairoTexture texture
+                    . withMathCoords h
+                    . runRender'
 
-      Group ds      -> mapM_ go ds
+runRender' :: View action -> Cairo.Render ()
+runRender' = \case
+    Blank         -> pure ()
+    Transform t d -> do Cairo.save
+                        interpret t
+                        runRender' d
+                        Cairo.restore
 
-      Geom g attrs  -> do Cairo.newPath
-                          withAttrs attrs $ renderGeom g
+    Group ds      -> mapM_ runRender' ds
+
+    Geom g attrs  -> do Cairo.newPath
+                        withAttrs attrs $ renderGeom g
 
 renderGeom :: Geom -> Cairo.Render ()
 renderGeom = \case
-    PointGeom p    -> do let (SDL.P (SDL.V2 px py)) = p
-                         Cairo.arc px py 2 0 (2*pi)
-    RectGeom r     -> do let Rectangle (P (V2 px py)) (V2 w h) = r
-                         Cairo.rectangle px py w h
-    PathGeom vs    -> renderPoly vs
-    PolygonGeom vs -> do renderPoly vs
-                         Cairo.closePath
-    TextGeom p t   -> do Cairo.moveTo (p^._x) (p^._y)
-                         Cairo.showText t
+    PointGeom p     -> do let (SDL.P (SDL.V2 px py)) = p
+                          Cairo.arc px py 2 0 (2*pi)
+    RectGeom r      -> do let Rectangle (P (V2 px py)) (V2 w h) = r
+                          Cairo.rectangle px py w h
+    PathGeom vs     -> renderPoly vs
+    PolygonGeom vs  -> do renderPoly vs
+                          Cairo.closePath
+    TextGeom p t    -> do Cairo.moveTo (p^._x) (p^._y)
+                          Cairo.textPath t
+    ArcGeom c r s t -> do let (SDL.P (SDL.V2 cx cy)) = c
+                          Cairo.arc cx cy r s t
   where
     renderPoly (p:|vs) = do Cairo.newPath
                             Cairo.moveTo (p^._x) (p^._y)
@@ -120,7 +125,7 @@ withAttr k = \case
                         let (RGB r g b) = toSRGB c
                         Cairo.setSourceRGB r g b
                         Cairo.strokePreserve
-  OnEvent _ :=> _ -> pure ()
+  OnEvent _ :=> _ -> pure () -- TODO
   Opacity   :=> o -> pure () -- TODO
 
 
@@ -133,3 +138,14 @@ withMathCoords h act = do Cairo.save
                           --                     (Matrix.scale 1 (-1) Matrix.identity))
                           act
                           Cairo.restore
+
+
+
+--------------------------------------------------------------------------------
+
+-- renderToSvg :: FilePath
+--             -> V2 Double
+--             -> View action
+--             -> IO ()
+-- renderToSvg fp (V2 w h) = withSVGSurface fp w h $ \surface ->
+--                             do t <- SDL.createTextureFromSurface surface

@@ -17,7 +17,7 @@ import           Data.Traversable
 import           Control.Lens
 import           Data.Colour
 import           Data.Constraint (Dict(..))
-import           Data.Constraint.Extras (ConstraintsFor(..))
+import           Data.Constraint.Extras (Has(..))
 import qualified Data.Dependent.Map as DMap
 import qualified Data.Dependent.Sum as DSum
 import           Data.GADT.Compare
@@ -74,9 +74,10 @@ instance GCompare (Attribute action) where
   gcompare Opacity      (OnEvent _)  = GGT
   gcompare Opacity      Opacity      = GEQ
 
-instance ArgDict c (Attribute action) where
-  type ConstraintsFor (Attribute action) c =
-    (c Color, c action, c Double)
+instance (c Color, c action, c Double)
+          => Has c (Attribute action) where
+  -- type ConstraintsFor (Attribute action) c =
+    -- (c Color, c action, c Double)
   argDict = \case
     Fill       -> Dict
     Stroke     -> Dict

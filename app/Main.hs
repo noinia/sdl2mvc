@@ -57,6 +57,8 @@ render m = group_ [ rectangle_ [ Fill   :=> (m^.theColor)
                                ] r
                   , rectangle_ [ Stroke :=> green ] r2
                   , text_ [ Stroke :=> black] (P (V2 400 400)) "test"
+                  , circle_ [ Stroke :=> blue ] (P (V2 500 400)) 20
+                  , point_ [ Stroke :=> blue ] (P (V2 550 400))
                   ]
 
   where

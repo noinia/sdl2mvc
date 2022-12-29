@@ -28,7 +28,7 @@ common setup
         , dependent-map           >= 0.4
         , dependent-sum           >= 0.6
         -- , some                    >= 1.0.1
-        , constraints-extras      >= 0.3
+        , constraints-extras      >= 0.4
         , constraints             >= 0.10
         , colour                  >= 2.3.6
         , linear                  >= 1.0
@@ -36,7 +36,8 @@ common setup
         -- , hgeometry-kernel        >= 1.0
         -- , hgeometry-combinatorial >= 0.15
 
-        -- , process == 1.6.16.0
+        -- , hspec >= 2.10
+        -- , process  > 1.6.15.0
 
         -- , linear          1        >= 1.10
 

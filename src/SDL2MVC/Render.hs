@@ -13,8 +13,12 @@ module SDL2MVC.Render
   , rectangle_
   , group_
   , text_
+  , point_, point'_
+  , circle_
+  , arc_
   ) where
 
+import           Data.Colour.Names (black)
 import           Data.Text (Text)
 import qualified SDL
 import           SDL2MVC.Attribute
@@ -36,3 +40,26 @@ group_ = Group
 
 text_         :: Real r => [AttrAssignment action] -> SDL.Point SDL.V2 r -> Text -> View action
 text_ ats p t = geom_ ats (TextGeom (realToFrac <$> p) t)
+
+-- | Renders a filled point
+point_     :: Real r => [AttrAssignment action] -> SDL.Point SDL.V2 r -> View action
+point_ ats = point'_ (ats <> [Fill :=> black])
+
+-- | Raw point, without any attributes
+point'_       :: Real r => [AttrAssignment action] -> SDL.Point SDL.V2 r -> View action
+point'_ ats p = geom_ ats (PointGeom $ realToFrac <$> p)
+
+
+arc_              :: Real r
+                  => [AttrAssignment action]
+                  -> SDL.Point SDL.V2 r
+                  -> r
+                  -> r
+                  -> r
+                  -> View action
+arc_ ats c r s t  =  geom_ ats
+                  $ ArcGeom(realToFrac <$> c) (realToFrac r) (realToFrac s) (realToFrac t)
+
+circle_          :: (Real r, Floating r)
+                 => [AttrAssignment action] -> SDL.Point SDL.V2 r -> r -> View action
+circle_ ats c r = arc_ ats c r 0 (2*pi)
