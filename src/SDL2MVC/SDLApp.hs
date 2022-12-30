@@ -18,7 +18,7 @@ module SDL2MVC.SDLApp
   , runApp', initializeSDLApp
 
   , Action
-  , AppAction(..)
+  , AppAction(.., AppAction')
   , SDLAction(..)
   ) where
 
@@ -54,6 +54,10 @@ data SDLAction action model =
   | AppSpecificAction action
   deriving (Eq)
 
+pattern AppAction'   :: action -> AppAction (SDLAction action model)
+pattern AppAction' a = AppAction (AppSpecificAction a)
+
+
 -- instance Bifunctor SDLAction where
 --   bimap f g = \case
 --     PublicModelAction a -> PublicModelAction <$> bimap f g a
@@ -79,7 +83,7 @@ data AppConfig action model =
                                   -- ^ the update function
             , _render             :: model -> View (Action action model)
                                   -- ^ the view function
-            , _startupAction      :: action
+            , _startupAction      :: Action action model
                                   -- ^ action to run on startup
             , _interpretSDLEvent  :: SDL.Event -> action
                                   -- ^ How to interpet SDL events
@@ -118,7 +122,7 @@ initializeSDLApp          :: model -- ^ initial model
 initializeSDLApp m appCfg = do
     initializeAll
     ui     <- UIState.initializeUIState $ appCfg^.initialWindowTitle
-    let initialActions = [ AppAction $ AppSpecificAction (appCfg^.startupAction)
+    let initialActions = [ appCfg^.startupAction
                          , AppAction WaitSDLEvent
                          , AppAction . UIStateAction . UIState.Redraw $ (appCfg^.render) m
                          ]

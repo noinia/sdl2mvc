@@ -3,13 +3,11 @@
 module Main where
 
 import Control.Lens
-import Control.Monad
-import Data.Colour (opaque)
 import Data.Colour.Names
-import Data.Text (Text)
-import Data.Word
-import Debug.Trace
-import SDL
+import HGeometry.Box
+import HGeometry.Point
+import HGeometry.Vector
+import SDL hiding (Point(..), Rectangle(..))
 import SDL2MVC.Attribute
 import SDL2MVC.Effect
 import SDL2MVC.Render
@@ -19,6 +17,8 @@ import SDL2MVC.View
 
 --------------------------------------------------------------------------------
 -- * Model
+
+type R = Double
 
 newtype Model = Model { _theColor :: Color }
   deriving (Show,Eq)
@@ -51,19 +51,21 @@ update m = \case
 --------------------------------------------------------------------------------
 -- * View
 
+
 render   :: Model -> View (Action MyAction Model)
 render m = group_ [ rectangle_ [ Fill   :=> (m^.theColor)
                                , Stroke :=> black
                                ] r
                   , rectangle_ [ Stroke :=> green ] r2
-                  , text_ [ Stroke :=> black] (P (V2 400 400)) "test"
-                  , circle_ [ Stroke :=> blue ] (P (V2 500 400)) 20
-                  , point_ [ Stroke :=> blue ] (P (V2 550 400))
+                  , text_ [ Stroke :=> black] (Point2 400 (400 :: R)) "test"
+                  , circle_ [ Stroke :=> blue ] (Point2 500 400) (20 :: R)
+                  , point_ [ Stroke :=> blue ] (Point2 550 (400 :: R))
                   ]
 
   where
-    r = SDL.Rectangle (P (V2 10 20)) (V2 200 300)
-    r2 = SDL.Rectangle (P (V2 100 300)) (V2 300 200)
+    r, r2 :: Rectangle (Point 2 R)
+    r  = Rectangle (Point2 10 20) (Point2 210 320)
+    r2 = Rectangle (Point2 100 300) (Point2 400 500)
 
 --------------------------------------------------------------------------------
 -- * Main
@@ -71,7 +73,7 @@ render m = group_ [ rectangle_ [ Fill   :=> (m^.theColor)
 myApp :: AppConfig MyAction Model
 myApp = AppConfig { _update             = update
                   , _render             = render
-                  , _startupAction      = Started
+                  , _startupAction      = AppAction' Started
                   , _interpretSDLEvent  = HandleEvent
                   , _initialWindowTitle = "MyApp :)"
                   }

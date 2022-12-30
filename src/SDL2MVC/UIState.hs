@@ -23,9 +23,13 @@ module SDL2MVC.UIState
   ) where
 
 import           Control.Lens
+import           Control.Subcategory.Functor
 import           Data.Colour.Names (white)
 import           Data.Text (Text)
 import           Foreign.C.Types (CInt)
+import           HGeometry.Box
+import           HGeometry.Point
+import           HGeometry.Vector
 import qualified SDL
 import           SDL (($=))
 import qualified SDL.Cairo
@@ -96,9 +100,9 @@ update m = \case
 rerender     :: UIState action' -> View action -> IO ()
 rerender m d = do SDL.clear renderer'
                   tInfo <- SDL.queryTexture texture'
-                  let size = SDL.V2 (SDL.textureWidth tInfo) h
-                      h    = SDL.textureHeight tInfo
-                  runRender texture' h $ blank size
+                  let size' = Vector2 (realToFrac $ SDL.textureWidth tInfo) (realToFrac h)
+                      h     = SDL.textureHeight tInfo
+                  runRender texture' h $ blank size'
                   -- cleared the renderer and the texture
                   runRender texture' h d
                   -- render the drawing onto the texture
@@ -111,11 +115,8 @@ rerender m d = do SDL.clear renderer'
 
 
 -- | filled white background
-blank      :: SDL.V2 CInt -> View action
-blank size = rectangle_ [Fill :=> white ] r
-  where
-    r :: SDL.Rectangle Double
-    r = SDL.Rectangle (SDL.P (SDL.V2 0 0)) (realToFrac <$> size)
+blank       :: Vector 2 Double -> View action
+blank size' = rectangle_ [Fill :=> white ] $ Rectangle origin (origin .+^ size')
 
 
   -- Clear         -> m <# do size <- pure $ SDL.V2 600 800

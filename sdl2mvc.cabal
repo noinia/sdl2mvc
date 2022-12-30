@@ -22,7 +22,7 @@ common setup
         , cairo                   >= 0.13
         , lens                    >= 5
         , text                    >= 1.2
-        , stm                     >= 2.5.1
+        , stm                     >= 2.5
         , async                   >= 2.2
         , containers              >= 0.6
         , dependent-map           >= 0.4
@@ -32,9 +32,11 @@ common setup
         , constraints             >= 0.10
         , colour                  >= 2.3.6
         , linear                  >= 1.0
-        -- , hgeometry               >= 1.0
-        -- , hgeometry-kernel        >= 1.0
-        -- , hgeometry-combinatorial >= 0.15
+        , hgeometry               >= 1.0
+        , hgeometry-kernel        >= 1.0
+        , hgeometry-combinatorial >= 0.15
+        , hgeometry-vector        >= 1.0
+        , subcategories           >= 0.2
 
         -- , hspec >= 2.10
         -- , process  > 1.6.15.0
@@ -85,6 +87,14 @@ library
 executable sdl2mvc
     import:           setup
     main-is:          Main.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends: sdl2mvc
+    hs-source-dirs:   app
+
+executable duality-viewer
+    import:           setup
+    main-is:          Duality.hs
     -- other-modules:
     -- other-extensions:
     build-depends: sdl2mvc

@@ -21,12 +21,18 @@ module SDL2MVC.View
 import           Control.Lens
 import           Data.Colour.SRGB (RGB(..), toSRGB)
 import           Data.List.NonEmpty (NonEmpty(..))
+import           Data.Maybe
 import           Data.Text (Text)
 import           Foreign.C.Types (CInt)
 import qualified Graphics.Rendering.Cairo as Cairo
 import qualified Graphics.Rendering.Cairo.Matrix as Matrix
+import           HGeometry.Box
+import           HGeometry.Matrix
+import           HGeometry.Point
+import           HGeometry.Interval
+import           HGeometry.Transformation
+import           HGeometry.Vector
 import qualified SDL
-import           SDL (V4(..), V2(..), Point(..), Rectangle(..), _x, _y)
 import qualified SDL.Cairo
 import           SDL2MVC.Attribute
 
@@ -34,29 +40,23 @@ import           SDL2MVC.Attribute
 
 type R = Double
 
-data Transformation r = Translate (V2 r)
-                      | Scale (V2 r)
-                      | Rotate r
-                      deriving stock (Eq,Show)
-
-interpret :: Transformation R -> Cairo.Render ()
-interpret = \case
-  Translate (SDL.V2 x y) -> Cairo.translate x y
-  Scale     (SDL.V2 x y) -> Cairo.scale x y
-  Rotate alpha           -> Cairo.rotate alpha
-
-
-newtype Poly = Poly [V2 R]
-  deriving (Show,Eq)
+interpret   :: Transformation 2 R -> Cairo.Render ()
+interpret t = Cairo.transform m
+  where
+    m = Matrix.Matrix a d b e c f
+    Vector3 a b c = fromMaybe err $ row 0 (t^.transformationMatrix)
+    Vector3 d e f = fromMaybe err $ row 1 (t^.transformationMatrix)
+    err = error "SDL.view: interpet matrix does not have 2 rows!? "
 
 -- | Geometric Objects that we can draw
 data Geom =
-    PointGeom    (Point V2 R)
-  | RectGeom     (Rectangle R)
-  | PathGeom     (NonEmpty (Point V2 R))
-  | PolygonGeom  (NonEmpty (Point V2 R))
-  | TextGeom     (Point V2 R) Text
-  | ArcGeom      (Point V2 R) R R R -- center, radius, starting angle, cw ending angle in radians.
+    PointGeom    (Point 2 R)
+  | RectGeom     (Rectangle (Point 2 R))
+  | PathGeom     (NonEmpty (Point 2 R))
+  | PolygonGeom  (NonEmpty (Point 2 R))
+  | TextGeom     (Point 2 R) Text
+  | ArcGeom      (Point 2 R) R R R
+    -- ^ center, radius, starting angle, cw ending angle in radians.
   deriving stock (Show,Eq,Ord)
 
 -- | A drawing is someting that we can render. Elements may contain
@@ -65,7 +65,7 @@ data View action =
     Blank
 
   -- | Colored (V4 Word8)   (View action)
-  | Transform (Transformation R) (View action)
+  | Transform (Transformation 2 R) (View action)
   | Group [View action]
 
   | Geom Geom (Attributes action)
@@ -96,21 +96,20 @@ runRender' = \case
 
 renderGeom :: Geom -> Cairo.Render ()
 renderGeom = \case
-    PointGeom p     -> do let (SDL.P (SDL.V2 px py)) = p
-                          Cairo.arc px py 2 0 (2*pi)
-    RectGeom r      -> do let Rectangle (P (V2 px py)) (V2 w h) = r
+    PointGeom p     -> do Cairo.arc (p^.xCoord) (p^.yCoord) 2 0 (2*pi)
+    RectGeom r      -> do let (Point2 px py) = r^.minPoint
+                              (Vector2 w h)  = size r
                           Cairo.rectangle px py w h
     PathGeom vs     -> renderPoly vs
     PolygonGeom vs  -> do renderPoly vs
                           Cairo.closePath
-    TextGeom p t    -> do Cairo.moveTo (p^._x) (p^._y)
+    TextGeom p t    -> do Cairo.moveTo (p^.xCoord) (p^.yCoord)
                           Cairo.textPath t
-    ArcGeom c r s t -> do let (SDL.P (SDL.V2 cx cy)) = c
-                          Cairo.arc cx cy r s t
+    ArcGeom c r s t -> do Cairo.arc (c^.xCoord) (c^.yCoord) r s t
   where
     renderPoly (p:|vs) = do Cairo.newPath
-                            Cairo.moveTo (p^._x) (p^._y)
-                            mapM_ (\q -> Cairo.lineTo (q^._x) (q^._y)) vs
+                            Cairo.moveTo (p^.xCoord) (p^.yCoord)
+                            mapM_ (\q -> Cairo.lineTo (q^.xCoord) (q^.yCoord)) vs
 
 withAttrs       :: Attributes action -> Cairo.Render () -> Cairo.Render ()
 withAttrs ats r = foldrAttrs (flip withAttr) r ats
