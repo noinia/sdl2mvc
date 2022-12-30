@@ -65,12 +65,15 @@ update   :: Model -> MyAction -> Effect (Action MyAction Model) Model
 update m = \case
   AddPoint p c -> noEff $ m&primal.points %~ ((p :+ c) :)
   HandleEvent e -> case e of
-    MouseClick p      -> m <# pure (AppAction' $ AddPoint p black)
+    MouseClick p      -> let p' = p&coordinates %~ realToFrac
+                         in m <# pure (AppAction' $ AddPoint p' black)
     _                 -> noEff m
+
 
 --------------------------------------------------------------------------------
 -- * View
 
+space_   :: Space -> View action
 space_ s = group_ $ pts <> lns
   where
     pts = [ point_ [ Fill :=> c ] p | p :+ c <- s^.points ]

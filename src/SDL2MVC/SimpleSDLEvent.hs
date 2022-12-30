@@ -14,8 +14,10 @@ module SDL2MVC.SimpleSDLEvent
   , pattern MouseClick, pattern RightClick
   ) where
 
-import Data.Int
-import SDL
+import           Data.Int
+import qualified HGeometry.Point as Point
+import           HGeometry.Vector
+import           SDL
 
 --------------------------------------------------------------------------------
 
@@ -31,25 +33,29 @@ simpleKeyPress e = case eventPayload e of
 
 --------------------------------------------------------------------------------
 
-pattern MouseMove   :: Point V2 Int32 -> Event
+pattern MouseMove   :: Point.Point 2 Int32 -> Event
 pattern MouseMove p <- (simpleMouseMove -> Just p)
 
-simpleMouseMove   :: SDL.Event -> Maybe (Point V2 Int32)
+simpleMouseMove   :: SDL.Event -> Maybe (Point.Point 2 Int32)
 simpleMouseMove e = case eventPayload e of
-      MouseMotionEvent md -> Just $ mouseMotionEventPos md
+      MouseMotionEvent md -> Just . convertPoint $ mouseMotionEventPos md
       _                   -> Nothing
 
 --------------------------------------------------------------------------------
 
-pattern MouseClick  :: Point V2 Int32 -> Event
+pattern MouseClick  :: Point.Point 2 Int32 -> Event
 pattern MouseClick p <- (simpleMouseClick -> Just (ButtonLeft, p))
 
-pattern RightClick  :: Point V2 Int32 -> Event
+pattern RightClick  :: Point.Point 2 Int32 -> Event
 pattern RightClick p <- (simpleMouseClick -> Just (ButtonRight, p))
 
-simpleMouseClick   :: Event -> Maybe (MouseButton, Point V2 Int32)
+simpleMouseClick   :: Event -> Maybe (MouseButton, Point.Point 2 Int32)
 simpleMouseClick e = case eventPayload e of
       MouseButtonEvent md -> Just ( mouseButtonEventButton md
-                                  , mouseButtonEventPos md
+                                  , convertPoint $ mouseButtonEventPos md
                                   )
       _                   -> Nothing
+
+
+convertPoint              :: Point V2 Int32 -> Point.Point 2 Int32
+convertPoint (P (V2 x y)) = Point.Point2 x y
