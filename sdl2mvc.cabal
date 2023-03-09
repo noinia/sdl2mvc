@@ -34,9 +34,10 @@ common setup
         , linear                  >= 1.0
         , hgeometry               >= 1.0
         , hgeometry-kernel        >= 1.0
-        , hgeometry-combinatorial >= 0.15
+        , hgeometry-combinatorial >= 1.0
         , hgeometry-vector        >= 1.0
-        , subcategories           >= 0.2
+        , hgeometry-point         >= 1.0
+        -- , subcategories           >= 0.2
 
         -- , hspec >= 2.10
         -- , process  > 1.6.15.0

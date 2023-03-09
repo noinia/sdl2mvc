@@ -1,8 +1,19 @@
-source-repository-package
-    type: git
-    location: https://github.com/noinia/hiraffe
+packages:
+    .
+    "../hgeometry/hgeometry"
+    "../hgeometry/hgeometry-vector"
+    "../hgeometry/hgeometry-point"
+    "../hgeometry/hgeometry-kernel"
+    "../hgeometry/hgeometry-combinatorial"
+    "../hiraffe"
+    gtk2hs-master/cairo
+    gtk2hs-master/tools/gtk2hs-buildtools.cabal
 
-source-repository-package
-    type: git
-    location: https://github.com/noinia/hgeometry
-    subdir: hgeometry-combinatorial
+allow-newer:
+  cairo:text,Cabal,
+  vector-circular:base,vector,template-haskell,
+  reanimate:aeson,
+  geojson:text,
+  hexpat:text,
+  doctest:Cabal
+-- allow-older: Cabal:process

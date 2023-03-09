@@ -110,7 +110,7 @@ data SDLApp action model =
          , _uiState           :: UIState.UIState (Action action model)
                               -- ^ internal state of the SDL App
          , _eventQueue        :: Queue.TBQueue (Action action model)
-                              -- ^ event queue we are using
+                              -- ^ the event queue we are using
          }
 makeLenses ''SDLApp
 

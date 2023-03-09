@@ -23,13 +23,13 @@ module SDL2MVC.UIState
   ) where
 
 import           Control.Lens
-import           Control.Subcategory.Functor
 import           Data.Colour.Names (white)
 import           Data.Text (Text)
 import           Foreign.C.Types (CInt)
 import           HGeometry.Box
 import           HGeometry.Point
 import           HGeometry.Vector
+import           HGeometry.Viewport
 import qualified SDL
 import           SDL (($=))
 import qualified SDL.Cairo
@@ -42,9 +42,10 @@ import           SDL2MVC.View
 -- * Model
 
 -- | Internal state of the SDL app
-data WindowState = WindowState { _window   :: SDL.Window
-                               , _renderer :: SDL.Renderer
-                               , _texture  :: SDL.Texture
+data WindowState = WindowState { _window       :: SDL.Window
+                               , _renderer     :: SDL.Renderer
+                               , _texture      :: SDL.Texture
+                               , _mainViewport :: Viewport Double
                                }
   deriving stock (Eq)
 makeLenses ''WindowState
@@ -53,13 +54,20 @@ makeLenses ''WindowState
 initializeWindowState   :: Text -- ^ window title
                         -> IO WindowState
 initializeWindowState t = do
-    window'   <- SDL.createWindow t SDL.defaultWindow
+    let windowCfg = SDL.defaultWindow
+    window'   <- SDL.createWindow t windowCfg
     renderer' <- SDL.createRenderer window' (-1) SDL.defaultRenderer
     texture'  <- SDL.Cairo.createCairoTexture' renderer' window'
-    pure $ WindowState { _window   = window'
-                       , _renderer = renderer'
-                       , _texture  = texture'
+    let vp = flipY . fromLinear $ SDL.windowInitialSize windowCfg
+    pure $ WindowState { _window       = window'
+                       , _renderer     = renderer'
+                       , _texture      = texture'
+                       , _mainViewport = vp
                        }
+  where
+    fromLinear              :: SDL.V2 CInt -> Vector 2 Double
+    fromLinear (SDL.V2 w h) = Vector2 (realToFrac w) (realToFrac h)
+
 
 data UIState action = UIState { _drawing :: View action
                                 -- ^ current view
@@ -112,6 +120,8 @@ rerender m d = do SDL.clear renderer'
   where
     renderer' = m^.windowState.renderer
     texture'  = m^.windowState.texture
+
+    -- size'' = size $ m^.windowState.mainViewport.viewport
 
 
 -- | filled white background

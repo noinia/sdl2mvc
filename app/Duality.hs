@@ -4,9 +4,10 @@ module Main where
 
 import           Control.Lens
 import           Data.Colour.Names
-import           Data.Ext
+import           HGeometry.Ext
 import           HGeometry.Line
 import           HGeometry.Point
+import           HGeometry.Box
 import           Prelude hiding (lines)
 import qualified SDL
 import           SDL2MVC.Attribute
@@ -101,3 +102,11 @@ myApp = AppConfig { _update             = update
 
 main :: IO ()
 main = runApp initialModel myApp
+
+
+--------------------------------------------------------------------------------
+
+-- instance HasMinPoint (SDL.Rectangle r) (Point 2 r) where
+--   minPoint = lens (\(SDL.Rectangle p))
+
+-- instance Rectangle_ (SDL.Rectangle r) where
