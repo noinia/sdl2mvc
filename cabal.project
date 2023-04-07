@@ -11,9 +11,11 @@ packages:
 
 allow-newer:
   cairo:text,Cabal,
-  vector-circular:base,vector,template-haskell,
+  vector-circular:base,vector,template-haskell,semigroupoids,
   reanimate:aeson,
   geojson:text,
   hexpat:text,
-  doctest:Cabal
+  doctest:Cabal,
+  dependent-sum:some,
+  constraints-extras:base
 -- allow-older: Cabal:process
