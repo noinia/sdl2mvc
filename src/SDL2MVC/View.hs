@@ -78,7 +78,7 @@ runRender            :: SDL.Texture
                      -> CInt -- ^ Height of the texture we are rendering to
                      -> View action -> IO ()
 runRender texture h = SDL.Cairo.withCairoTexture texture
-                    . withMathCoords h
+                    -- . withMathCoords h
                     . runRender'
 
 runRender' :: View action -> Cairo.Render ()

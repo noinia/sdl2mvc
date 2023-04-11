@@ -50,17 +50,26 @@ text_         :: ( Real r
                  ) => [AttrAssignment action] -> Point 2 r -> Text -> View action
 text_ ats p t = geom_ ats (TextGeom (p&coordinates %~ realToFrac) t)
 
+
+
+
+
 -- | Renders a filled point
 point_     :: ( Real r
               , HasComponents (Vector 2 r) (Vector 2 Double)
               ) => [AttrAssignment action] -> Point 2 r -> View action
 point_ ats = point'_ (ats <> [Fill :=> black])
 
+
+
+
 -- | Raw point, without any attributes
 point'_       :: ( Real r
                  , HasComponents (Vector 2 r) (Vector 2 Double)
                  ) => [AttrAssignment action] -> Point 2 r -> View action
 point'_ ats p = geom_ ats (PointGeom (p&coordinates %~ realToFrac))
+
+
 
 
 -- | Draws an arc
@@ -82,3 +91,8 @@ circle_          :: ( Real r, Floating r
                     , HasComponents (Vector 2 r) (Vector 2 Double)
                     ) => [AttrAssignment action] -> Point 2 r -> r -> View action
 circle_ ats c r = arc_ ats c r 0 (2*pi)
+
+
+-- lineSegment_  :: ( Real r
+--                  , HasComponents (Vector 2 r) (Vector 2 Double)
+--                  ) => [AttrAssignment action] -> LineSegment  -> View action

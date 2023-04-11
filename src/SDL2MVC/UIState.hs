@@ -58,7 +58,8 @@ initializeWindowState t = do
     window'   <- SDL.createWindow t windowCfg
     renderer' <- SDL.createRenderer window' (-1) SDL.defaultRenderer
     texture'  <- SDL.Cairo.createCairoTexture' renderer' window'
-    let vp = flipY . fromLinear $ SDL.windowInitialSize windowCfg
+    -- let vp = flipY . fromLinear $ SDL.windowInitialSize windowCfg
+    let vp = fromSize . fromLinear $ SDL.windowInitialSize windowCfg
     pure $ WindowState { _window       = window'
                        , _renderer     = renderer'
                        , _texture      = texture'

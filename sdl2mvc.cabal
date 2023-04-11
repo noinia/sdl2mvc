@@ -17,6 +17,7 @@ common setup
     default-language: GHC2021
     build-depends:
           base                    >= 4.16.3.0
+        , mtl                     >= 2.1
         , sdl2                    >= 2.5.3
         , sdl2-cairo              >= 0.2
         , cairo                   >= 0.13
@@ -37,6 +38,10 @@ common setup
         , hgeometry-combinatorial >= 1.0
         , hgeometry-vector        >= 1.0
         , hgeometry-point         >= 1.0
+        , semigroupoids           >= 5
+        -- , hiraffe                 >= 0.1
+
+        , data-default-class      ^>= 0.1
         -- , subcategories           >= 0.2
 
         -- , hspec >= 2.10
@@ -80,6 +85,8 @@ library
         SDL2MVC.Attribute
         SDL2MVC.Render
 
+        SDL2MVC.Canvas
+        SDL2MVC.Cairo.Stateless
 
     -- other-modules:
     -- other-extensions:
