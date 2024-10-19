@@ -1,0 +1,79 @@
+cabal-version:      3.14
+name:               sdl2mvc
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             Frank Staals
+maintainer:         frank@fstaals.net
+-- copyright:
+category:           Graphics
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common setup
+    ghc-options: -O2 -Wall -fno-warn-unticked-promoted-constructors -fno-warn-type-defaults
+    build-depends:
+          base                    >= 4.20.0.0 && < 5
+        , diagrams-gi-cairo       >= 1.4.2
+        , diagrams                >= 1.4.1
+        , hgeometry-combinatorial >= 1.0
+        , hgeometry               >= 1.0
+        , hgeometry:kernel
+        , hgeometry:vector
+        , hgeometry:point
+        , semigroupoids           >= 5
+        , sdl2                    >= 2.5.5
+        , lens                    >= 5
+        , linear                  >= 1.0
+        , effectful               >= 2.4
+
+    default-language: GHC2024
+    -- default-extensions:
+      --   DataKinds
+      -- , TypeFamilies
+      -- , GADTs
+      -- , KindSignatures
+      -- , ScopedTypeVariables
+      -- , DerivingStrategies
+      -- , DerivingVia
+      -- , GeneralizedNewtypeDeriving
+      -- , DeriveGeneric
+      -- , DeriveFunctor
+      -- , PatternSynonyms
+      -- , TupleSections
+      -- , LambdaCase
+      -- , ViewPatterns
+      -- , FunctionalDependencies
+
+
+library
+    import:           setup
+    exposed-modules:
+        SDL2MVC
+    -- other-modules:
+    -- other-extensions:
+    hs-source-dirs:   src
+
+executable sdl2mvc
+    import:           setup
+    main-is:          Main.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends:
+        sdl2mvc
+
+    hs-source-dirs:   app
+    default-language: GHC2024
+
+test-suite sdl2mvc-test
+    import:           setup
+    -- other-modules:
+    -- other-extensions:
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        sdl2mvc
