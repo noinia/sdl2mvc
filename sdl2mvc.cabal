@@ -19,6 +19,7 @@ common setup
           base                    >= 4.20.0.0 && < 5
         , diagrams-gi-cairo       >= 1.4.2
         , diagrams                >= 1.4.1
+        , diagrams-lib            >= 1.4.6.2
         , hgeometry-combinatorial >= 1.0
         , hgeometry               >= 1.0
         , hgeometry:kernel
@@ -29,6 +30,7 @@ common setup
         , lens                    >= 5
         , linear                  >= 1.0
         , effectful               >= 2.4
+        , text                    >= 2.0
 
     default-language: GHC2024
     -- default-extensions:
