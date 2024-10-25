@@ -4,7 +4,7 @@ module SDL2MVC
   ( main
   ) where
 
-import           Control.Concurrent.Async (mapConcurrently_, concurrently, withAsync)
+import           Control.Concurrent.Async (mapConcurrently_, concurrently, withAsync, uninterruptibleCancel)
 import           Control.Concurrent.STM (atomically)
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
@@ -35,7 +35,7 @@ data AppConfig m model action =
   AppConfig { _appModel      :: model
             , _handler       :: Handler m model action
             , _startupAction :: action
-            , _liftSDLEvent  :: SDL.Event -> action
+            , _liftSDLEvent  :: SDL.Event -> LoopAction action
             }
 
 makeLenses ''AppConfig
@@ -87,24 +87,32 @@ initializeSDLApp appCfg = do
              , _eventQueue  = queue
              }
 
+
+-- | Handles some of the default events, in particular closing the window and quitting
+withDefaultSDLEvents :: (SDL.Event -> action) -> SDL.Event -> LoopAction action
+withDefaultSDLEvents handle e = case SDL.eventPayload e of
+  SDL.WindowClosedEvent _ -> Shutdown
+  SDL.QuitEvent           -> Shutdown
+  _                       -> Continue $ handle e
+
+
+
 -- | Runs the app
 runApp     :: forall model action. App IO model action -> IO ()
 runApp app = startup (app^.config.appModel)
   where
     queue = app^.eventQueue
 
-
-
-    startup model = do withAsync awaitSDLEvent $ \_ ->
+    -- start listening for sdl events (pushing them into our own event queue), and
+    -- start our handler
+    startup model = withAsync awaitSDLEvent $ \sdlWaiter -> do
                          go model
-
+                         uninterruptibleCancel sdlWaiter
 
     -- | indefinitely wait for SDL events, pushing them into our own event Queue
     awaitSDLEvent = do e <- SDL.waitEvent
-                       atomically $ Queue.writeTBQueue queue
-                                      (Continue . (app^.config.liftSDLEvent) $ e)
+                       atomically $ Queue.writeTBQueue queue (app^.config.liftSDLEvent $ e)
                        awaitSDLEvent
-
 
     -- | The main app loop; we read the next event from the queue, and
     -- then handle it. In turn, this may again trigger further event
@@ -115,7 +123,7 @@ runApp app = startup (app^.config.appModel)
 
     handle       :: model -> LoopAction action -> IO ()
     handle model = \case
-      Shutdown     -> SDL.destroyWindow (app^.windowRef) -- destory the window, and then quit
+      Shutdown     -> SDL.destroyWindow (app^.windowRef) -- destroy the window, and then quit
       Continue act -> let Reaction model' effs = (app^.config.handler) model act
                       in do runAll effs -- runs the effects, which may produce more actions
                             go model'  -- continue to thandle then ext event.
@@ -129,6 +137,6 @@ main = do
   app <- initializeSDLApp $ AppConfig { _appModel      = ()
                                       , _handler       = \model _ -> noEff model
                                       , _startupAction = Nothing
-                                      , _liftSDLEvent  = Just
+                                      , _liftSDLEvent  = withDefaultSDLEvents Just
                                       }
   runApp app
