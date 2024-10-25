@@ -17,6 +17,8 @@ common setup
     ghc-options: -O2 -Wall -fno-warn-unticked-promoted-constructors -fno-warn-type-defaults
     build-depends:
           base                    >= 4.20.0.0 && < 5
+        , stm                     >= 2.5.3
+        , async                   >= 2.2.5
         , diagrams-gi-cairo       >= 1.4.2
         , diagrams                >= 1.4.1
         , diagrams-lib            >= 1.4.6.2
