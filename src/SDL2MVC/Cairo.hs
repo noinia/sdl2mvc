@@ -56,19 +56,7 @@ withCairoTexture' t m = do
     mapFormat SDL.RGB888   = Just Cairo.FormatRGB24
     mapFormat _            = Nothing
 
-
-cairoDraw   :: SDL.Texture -> IO ()
-cairoDraw t = withCairoTexture t $ do
-                  Cairo.setSourceRGB 200 100 150
-                  Cairo.rectangle 100 200 300 400
-                  liftIO $ print "rect"
-                  Cairo.stroke
-                  Cairo.fill
-                  -- Cairo.setSourceRGB 200 100 150
-                  -- Cairo.rectangle 100 200 300 400
-                  -- Cairo.stroke
-                  -- Cairo.fill
-
+-- | Renders the diagram to the given texture
 renderDiagramTo                 :: SDL.Texture -> Diagrams.Diagram Diagrams.Cairo -> IO ()
 renderDiagramTo texture diagram = do
     SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
