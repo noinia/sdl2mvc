@@ -3,10 +3,14 @@ module SDL2MVC.Cairo
   , createCairoTexture'
   , withCairoTexture
 
-  , cairoDraw
+  , renderDiagramTo
   ) where
 
 import           Control.Monad.IO.Class
+import qualified Diagrams.Backend.Cairo as Diagrams
+import           Diagrams.Backend.Cairo.Internal (Options(..))
+import qualified Diagrams.Core as Diagrams
+import qualified Diagrams.Prelude as Diagrams
 import           Foreign.C.Types (CInt)
 import           Foreign.Ptr (castPtr)
 import qualified GI.Cairo.Render as Cairo
@@ -64,3 +68,15 @@ cairoDraw t = withCairoTexture t $ do
                   -- Cairo.rectangle 100 200 300 400
                   -- Cairo.stroke
                   -- Cairo.fill
+
+renderDiagramTo                 :: SDL.Texture -> Diagrams.Diagram Diagrams.Cairo -> IO ()
+renderDiagramTo texture diagram = do
+    SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
+    let options = CairoOptions
+          { _cairoSizeSpec     = fromIntegral <$> Diagrams.dims2D w h
+          , _cairoOutputType   = Diagrams.RenderOnly
+          , _cairoBypassAdjust = False
+          , _cairoFileName     = ""
+          }
+        (_, render) = Diagrams.renderDia Diagrams.Cairo options diagram
+    withCairoTexture texture render

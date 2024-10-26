@@ -8,6 +8,7 @@ import           Control.Concurrent.Async (mapConcurrently_, concurrently, withA
 import           Control.Concurrent.STM (atomically)
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
+import           Data.Colour.Names
 import           Data.Semigroup (Any(..))
 import           Data.Text (Text)
 import           Diagrams hiding (Render)
@@ -18,7 +19,7 @@ import           Linear
 import qualified SDL
 import           SDL2MVC.Cairo
 
-import Debug.Trace
+import           Debug.Trace
 
 --------------------------------------------------------------------------------
 
@@ -176,6 +177,10 @@ handleRender app model = \case
 --------------------------------------------------------------------------------
 
 
+diagramDraw        :: model -> Diagram Cairo
+diagramDraw _model = circle 1 & fc blue
+
+
 -- -- | draw on SDL texture with Render monad from Cairo
 -- withCairoTexture     :: SDL.Texture -> Render () -> IO ()
 -- withCairoTexture t m = withCairoTexture' t (\s -> renderWith s m)
@@ -189,9 +194,9 @@ handleRender app model = \case
 
 --------------------------------------------------------------------------------
 
-myDraw            :: model -> View IO MyAction
-myDraw _ texture = do cairoDraw texture
-                      pure Skip
+myDraw               :: model -> View IO MyAction
+myDraw model texture = do renderDiagramTo texture $ diagramDraw model
+                          pure Skip
 
   -- do SDL.rendererDrawColor renderer SDL.$= V4 0 0 255 255
   --                      SDL.drawRect renderer (Just $ SDL.Rectangle origin (V2 200 100))
