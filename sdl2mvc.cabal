@@ -19,6 +19,7 @@ common setup
           base                    >= 4.20.0.0 && < 5
         , stm                     >= 2.5.3
         , async                   >= 2.2.5
+        , gi-cairo-render         >= 0.1.2
         , diagrams-gi-cairo       >= 1.4.2
         , diagrams                >= 1.4.1
         , diagrams-lib            >= 1.4.6.2
@@ -57,6 +58,9 @@ library
     import:           setup
     exposed-modules:
         SDL2MVC
+        SDL2MVC.Cairo
+
+
     -- other-modules:
     -- other-extensions:
     hs-source-dirs:   src
