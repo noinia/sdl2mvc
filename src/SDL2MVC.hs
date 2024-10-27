@@ -4,23 +4,19 @@ module SDL2MVC
   ( main
   ) where
 
-import           Control.Concurrent.Async (mapConcurrently_, concurrently, withAsync, uninterruptibleCancel)
+import           Control.Concurrent.Async (mapConcurrently_, withAsync, uninterruptibleCancel)
 import           Control.Concurrent.STM (atomically)
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
-import           Data.Colour.Names
-import           Data.Semigroup (Any(..))
-import           Data.Text (Text)
 import           Diagrams hiding (Render)
 import           Diagrams.Backend.Cairo
+import           Diagrams.Prelude hiding (Render)
 import           Effectful
 import           GHC.Natural
-import           Linear
 import qualified SDL
 import           SDL2MVC.Cairo
 
-import           Debug.Trace
-
+import Debug.Trace
 --------------------------------------------------------------------------------
 
 data Reaction m model action = Reaction model [m action]
@@ -30,14 +26,17 @@ noEff model = Reaction model []
 
 infix <#
 
+(<#)         :: model -> m action -> Reaction m model action
 model <# act = Reaction model [act]
 
 
 
 data LoopAction action = Shutdown
                        | Continue action
+                       deriving (Show,Eq)
 
 data Render = Render
+  deriving (Show,Eq)
 
 type Handler m model action = model -> action -> Reaction m model (LoopAction action)
 
@@ -92,7 +91,6 @@ initializeSDLApp appCfg = do
                                         }
   window'   <- SDL.createWindow "foo" windowCfg
   renderer' <- SDL.createRenderer window' (-1) rendererCfg
-  print "go"
   texture'  <- createCairoTexture' renderer' window'
 
 
@@ -124,7 +122,9 @@ withDefaultSDLEvents handle e = case SDL.eventPayload e of
 
 
 -- | Runs the app
-runApp     :: forall model action. App IO model action -> IO ()
+runApp     :: forall model action.
+           Show action =>
+              App IO model action -> IO ()
 runApp app = startup (app^.config.appModel)
   where
     queue = app^.eventQueue
@@ -150,8 +150,9 @@ runApp app = startup (app^.config.appModel)
     handle       :: model -> LoopAction action -> IO ()
     handle model = \case
       Shutdown     -> SDL.destroyWindow (app^.windowRef) -- destroy the window, and then quit
-      Continue act -> let Reaction model' effs = (app^.config.handler) app model act
-                      in do runAll effs -- runs the effects, which may produce more actions
+      Continue act -> traceShow ("handle",act) $
+                      let Reaction model' effs = (app^.config.handler) app model act
+                      in do !_ <- runAll effs -- runs the effects, which may produce more actions
                             go model'  -- continue to thandle then ext event.
 
     runAll :: [IO (LoopAction action)] -> IO ()
@@ -166,19 +167,86 @@ handleRender           :: MonadIO m
 handleRender app model = \case
     Render -> model <# do let renderer = app^.rendererRef
                               texture  = app^.textureRef
-                          -- sets color to white
+                          -- clear previous rendering
                           SDL.clear renderer
                           -- now render
                           act <- (app^.config.appRender) model texture
+                          -- display the drawing
                           SDL.copy renderer texture Nothing Nothing
                           SDL.present renderer
                           pure $ Continue act
 
 --------------------------------------------------------------------------------
 
+headerHeight = 10
+footerHeight = 10
 
-diagramDraw        :: model -> Diagram Cairo
-diagramDraw _model = circle 1 & fc blue
+
+
+diagramDraw :: model -> V2 Int -> Diagram Cairo
+diagramDraw = userInterface
+
+userInterface                  :: model -> V2 Int -> Diagram Cairo
+userInterface model canvasDims = vcat [ header
+                                      , mainArea
+                                      , footer
+                                      ]
+  where
+    (V2 w h) = fromIntegral <$> canvasDims
+
+    header   = mconcat [ rect w headerHeight & fc red
+                                             & lcA transparent
+                       -- , text "menu" & fc black
+                       ]
+    -- mainArea = hcat [ toolBar
+    --                 , canvas model
+    --                 , pane
+    --                 ] & sized (dims canvasDims)
+
+    mainArea = rect 1 1 & fc white
+                        & lcA transparent
+                        & sized (dims $ V2 w (h-headerHeight - footerHeight))
+
+    -- mainArea = hcat [ toolBar
+    --                 , canvas model
+    --                 , pane
+    --                 ]
+
+    footer   = mconcat [ text "footer" & fc black
+                       , rect w footerHeight & fc green
+                                             & lcA transparent
+                       ]
+
+    -- toolBar = [text (show i) `atop` item | i <- [1..10]]
+    -- item = rect 1 1
+    -- pane = rect 1 1 & fc yellow
+
+
+  -- vcat [ header
+  --                        , mainArea
+  --                        , footer
+  --                        ]
+  -- where
+  --   header = rect (mkHeight 1) & fc blue
+
+  --   footer = rect (mkHeight 1) & fc red
+
+
+  --   toolBar = rect (mkHeight 1) & fc green
+  --   pane    = rect (mkHeight 1) & fc yellow
+
+-- canvas       :: model -> Diagram Cairo
+canvas model = mconcat [ drawGeometries model
+                       , blankCanvas model
+                       ] & bg white
+
+drawGeometries model = vcat [ circle 1 & fc blue
+                            , rect 2 1 & fc green
+                            ]
+
+blankCanvas    :: model -> Diagram Cairo
+blankCanvas _ = mempty
+
 
 
 -- -- | draw on SDL texture with Render monad from Cairo
@@ -216,6 +284,7 @@ myDraw model texture = do renderDiagramTo texture $ diagramDraw model
 data MyAction = RenderAction Render
               | SDLEvent SDL.Event
               | Skip
+              deriving (Show,Eq)
 
 myHandler app model = \case
   RenderAction renderAct -> handleRender app model renderAct

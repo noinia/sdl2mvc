@@ -6,7 +6,6 @@ module SDL2MVC.Cairo
   , renderDiagramTo
   ) where
 
-import           Control.Monad.IO.Class
 import qualified Diagrams.Backend.Cairo as Diagrams
 import           Diagrams.Backend.Cairo.Internal (Options(..))
 import qualified Diagrams.Core as Diagrams
@@ -46,7 +45,6 @@ withCairoTexture' t m = do
       Nothing -> error "ERROR: Invalid pixel format for cairo use!"
       Just f' -> do
         (pixels, pitch) <- SDL.lockTexture t Nothing
-        print "after lock"
         ret <- Cairo.withImageSurfaceForData (castPtr pixels) f'
                  (fromIntegral w) (fromIntegral h) (fromIntegral pitch) m
         SDL.unlockTexture t
@@ -56,15 +54,19 @@ withCairoTexture' t m = do
     mapFormat SDL.RGB888   = Just Cairo.FormatRGB24
     mapFormat _            = Nothing
 
--- | Renders the diagram to the given texture
-renderDiagramTo                 :: SDL.Texture -> Diagrams.Diagram Diagrams.Cairo -> IO ()
+-- | Given a function that takes the dimensions of the canvas and produces a diagram,
+-- renders the diagram to the given texture.
+renderDiagramTo                 :: SDL.Texture
+                                -> (V2 Int -> Diagrams.Diagram Diagrams.Cairo)
+                                -> IO ()
 renderDiagramTo texture diagram = do
     SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
-    let options = CairoOptions
+    let dims    = fromIntegral <$> V2 w h
+        options = CairoOptions
           { _cairoSizeSpec     = fromIntegral <$> Diagrams.dims2D w h
           , _cairoOutputType   = Diagrams.RenderOnly
           , _cairoBypassAdjust = False
           , _cairoFileName     = ""
           }
-        (_, render) = Diagrams.renderDia Diagrams.Cairo options diagram
+        (_, render) = Diagrams.renderDia Diagrams.Cairo options (diagram dims)
     withCairoTexture texture render
