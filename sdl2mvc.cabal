@@ -60,6 +60,10 @@ library
     exposed-modules:
         SDL2MVC
         SDL2MVC.Cairo
+        SDL2MVC.App
+        SDL2MVC.Reaction
+        SDL2MVC.Render
+        SDL2MVC.Framework
 
 
     -- other-modules:

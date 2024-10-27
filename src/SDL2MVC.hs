@@ -8,218 +8,120 @@ import           Control.Concurrent.Async (mapConcurrently_, withAsync, uninterr
 import           Control.Concurrent.STM (atomically)
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
+import           Debug.Trace
 import           Diagrams hiding (Render)
 import           Diagrams.Backend.Cairo
 import           Diagrams.Prelude hiding (Render)
 import           Effectful
 import           GHC.Natural
+import           Linear
 import qualified SDL
+import           SDL2MVC.App
 import           SDL2MVC.Cairo
-
-import Debug.Trace
---------------------------------------------------------------------------------
-
-data Reaction m model action = Reaction model [m action]
-
-noEff       :: model -> Reaction m model action
-noEff model = Reaction model []
-
-infix <#
-
-(<#)         :: model -> m action -> Reaction m model action
-model <# act = Reaction model [act]
-
-
-
-data LoopAction action = Shutdown
-                       | Continue action
-                       deriving (Show,Eq)
-
-data Render = Render
-  deriving (Show,Eq)
-
-type Handler m model action = model -> action -> Reaction m model (LoopAction action)
-
-
-
-
-type View m action = SDL.Texture -> m action
-
-
-data AppConfig m model action =
-  AppConfig { _appModel        :: model
-            , _handler         :: App m model action -> Handler m model action
-            , _startupAction   :: action
-            , _liftSDLEvent    :: SDL.Event -> LoopAction action
-            , _liftRenderEvent :: Render -> action
-            , _appRender       :: model -> View m action
-            }
-
-
-data App m model action =
-     App { _config          :: AppConfig m model action
-         , _windowRef       :: SDL.Window
-         , _rendererRef     :: SDL.Renderer
-         , _textureRef      :: SDL.Texture
-         , _eventQueue      :: Queue.TBQueue (LoopAction action)
-          -- ^ the event queue we are using
-         }
-
-
-makeLenses ''AppConfig
-
-
-makeLenses ''App
+import           SDL2MVC.Framework
+import           SDL2MVC.Reaction
+import           SDL2MVC.Render
 
 --------------------------------------------------------------------------------
+-- * Model
 
 
-maxQueueSize :: Natural
-maxQueueSize = 1000
+data MyModel = MyModel { _mousePosition :: Maybe (Point V2 Int)
+                       }
+             deriving (Show,Eq)
+
+makeLenses ''MyModel
+
+defaultModel :: MyModel
+defaultModel = MyModel { _mousePosition = Nothing
+                       }
 
 
 --------------------------------------------------------------------------------
+-- * Controller
 
 
-
--- | Initialize the app
-initializeSDLApp        :: AppConfig m model action -> IO (App m model action)
-initializeSDLApp appCfg = do
-  SDL.initializeAll
-  let windowCfg   = SDL.defaultWindow
-      rendererCfg = SDL.defaultRenderer { SDL.rendererType = SDL.SoftwareRenderer
-                                        }
-  window'   <- SDL.createWindow "foo" windowCfg
-  renderer' <- SDL.createRenderer window' (-1) rendererCfg
-  texture'  <- createCairoTexture' renderer' window'
+data MyAction = RenderAction Render
+              | SDLEvent SDL.Event
+              | Skip
+              deriving (Show,Eq)
 
 
-  -- initialize the event queue
-  let initialActions = [ Continue . (appCfg^.liftRenderEvent) $ Render
-                       , Continue $ appCfg^.startupAction
-                       -- , AppAction WaitSDLEvent
-                       -- , AppAction . UIStateAction . UIState.Redraw $ (appCfg^.render) m
-                       ]
-  queue  <- atomically $ do q <- Queue.newTBQueue maxQueueSize
-                            mapM_ (Queue.writeTBQueue q) initialActions
-                            pure q
-
-  pure $ App { _config      = appCfg
-             , _windowRef   = window'
-             , _rendererRef = renderer'
-             , _textureRef  = texture'
-             , _eventQueue  = queue
-             }
+----------------------------------------
 
 
--- | Handles some of the default events, in particular closing the window and quitting
-withDefaultSDLEvents :: (SDL.Event -> action) -> SDL.Event -> LoopAction action
-withDefaultSDLEvents handle e = case SDL.eventPayload e of
-  SDL.WindowClosedEvent _ -> Shutdown
-  SDL.QuitEvent           -> Shutdown
-  _                       -> Continue $ handle e
+myHandler app model = \case
+  RenderAction renderAct -> handleRender app model renderAct
+  SDLEvent e                   -> case SDL.eventPayload e of
+    SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
+                                      in (model&mousePosition ?~ p)
+                                         <# do print p
+                                               pure $ Continue Skip
+    _                              -> noEff model
+  Skip                   -> noEff model
 
 
-
--- | Runs the app
-runApp     :: forall model action.
-           Show action =>
-              App IO model action -> IO ()
-runApp app = startup (app^.config.appModel)
-  where
-    queue = app^.eventQueue
-
-    -- start listening for sdl events (pushing them into our own event queue), and
-    -- start our handler
-    startup model = withAsync awaitSDLEvent $ \sdlWaiter -> do
-                         go model
-                         uninterruptibleCancel sdlWaiter
-
-    -- | indefinitely wait for SDL events, pushing them into our own event Queue
-    awaitSDLEvent = do e <- SDL.waitEvent
-                       atomically $ Queue.writeTBQueue queue (app^.config.liftSDLEvent $ e)
-                       awaitSDLEvent
-
-    -- | The main app loop; we read the next event from the queue, and
-    -- then handle it. In turn, this may again trigger further event
-    -- handling.
-    go     :: model -> IO ()
-    go m = do e <- atomically $ Queue.readTBQueue queue
-              handle m e
-
-    handle       :: model -> LoopAction action -> IO ()
-    handle model = \case
-      Shutdown     -> SDL.destroyWindow (app^.windowRef) -- destroy the window, and then quit
-      Continue act -> traceShow ("handle",act) $
-                      let Reaction model' effs = (app^.config.handler) app model act
-                      in do !_ <- runAll effs -- runs the effects, which may produce more actions
-                            go model'  -- continue to thandle then ext event.
-
-    runAll :: [IO (LoopAction action)] -> IO ()
-    runAll = mapConcurrently_ (>>= atomically . Queue.writeTBQueue queue)
 
 --------------------------------------------------------------------------------
+-- * View
 
--- | Handles a render action
-handleRender           :: MonadIO m
-                       => App m model action -> model -> Render
-                       -> Reaction m model (LoopAction action)
-handleRender app model = \case
-    Render -> model <# do let renderer = app^.rendererRef
-                              texture  = app^.textureRef
-                          -- clear previous rendering
-                          SDL.clear renderer
-                          -- now render
-                          act <- (app^.config.appRender) model texture
-                          -- display the drawing
-                          SDL.copy renderer texture Nothing Nothing
-                          SDL.present renderer
-                          pure $ Continue act
-
---------------------------------------------------------------------------------
 
 headerHeight = 10
-footerHeight = 10
+footerHeight = 20
+
+paneWidth    = 100
+toolBarWidth = 16
 
 
+diagramDraw :: MyModel -> V2 Int -> Diagram Cairo
+diagramDraw model dims = drawCursor (model^.mousePosition)
 
-diagramDraw :: model -> V2 Int -> Diagram Cairo
-diagramDraw = userInterface
+drawCursor = \case
+  Nothing -> mempty
+  Just p -> unitCircle & fc red
+                       & moveTo (fromIntegral <$> p)
 
 userInterface                  :: model -> V2 Int -> Diagram Cairo
-userInterface model canvasDims = vcat [ header
-                                      , mainArea
-                                      , footer
+userInterface model canvasDims = vcat [ header   & sized (dims $ V2 w headerHeight)
+                                      , mainArea & centerXY
+                                                 & sized (dims $ V2 w h')
+                                      , footer   & sized (dims $ V2 w footerHeight)
                                       ]
+                                 & centerXY
+
   where
     (V2 w h) = fromIntegral <$> canvasDims
+    h' = h - headerHeight - footerHeight
+    w' = w - toolBarWidth - paneWidth
 
-    header   = mconcat [ rect w headerHeight & fc red
-                                             & lcA transparent
-                       -- , text "menu" & fc black
-                       ]
-    -- mainArea = hcat [ toolBar
-    --                 , canvas model
-    --                 , pane
-    --                 ] & sized (dims canvasDims)
-
-    mainArea = rect 1 1 & fc white
+    header   = rect 1 1 & fc red
                         & lcA transparent
-                        & sized (dims $ V2 w (h-headerHeight - footerHeight))
 
-    -- mainArea = hcat [ toolBar
-    --                 , canvas model
-    --                 , pane
-    --                 ]
+      -- mconcat [ rect w headerHeight & fc red
+      --                                        & lcA transparent
+      --                  -- , text "menu" & fc black
+      --                  ]
+
+    mainArea = hcat [ toolBar        & centerY
+                                     & sized (mkHeight h')
+                    , (canvas model) & sized (dims $ V2 w' h')
+                                     & showTrace
+                    , showTrace pane
+                    ]
 
     footer   = mconcat [ text "footer" & fc black
                        , rect w footerHeight & fc green
                                              & lcA transparent
                        ]
 
-    -- toolBar = [text (show i) `atop` item | i <- [1..10]]
-    -- item = rect 1 1
-    -- pane = rect 1 1 & fc yellow
+    toolBar = vsep 2 [ (text (show i) `atop` item)
+                       & sized (mkWidth toolBarWidth)
+                     | i <- [1..10]]
+    item = rect 1 1 & fc white
+                    & sc green
+
+
+    pane = rect 1 1 & fc yellow
 
 
   -- vcat [ header
@@ -262,9 +164,6 @@ blankCanvas _ = mempty
 
 --------------------------------------------------------------------------------
 
-myDraw               :: model -> View IO MyAction
-myDraw model texture = do renderDiagramTo texture $ diagramDraw model
-                          pure Skip
 
   -- do SDL.rendererDrawColor renderer SDL.$= V4 0 0 255 255
   --                      SDL.drawRect renderer (Just $ SDL.Rectangle origin (V2 200 100))
@@ -281,24 +180,20 @@ myDraw model texture = do renderDiagramTo texture $ diagramDraw model
 
 --------------------------------------------------------------------------------
 
-data MyAction = RenderAction Render
-              | SDLEvent SDL.Event
-              | Skip
-              deriving (Show,Eq)
+--------------------------------------------------------------------------------
 
-myHandler app model = \case
-  RenderAction renderAct -> handleRender app model renderAct
-  SDLEvent e                   -> case SDL.eventPayload e of
-    SDL.MouseMotionEvent mouseData -> model <# do print $ SDL.mouseMotionEventPos mouseData
-                                                  pure $ Continue Skip
-    _                              -> noEff model
-  Skip                   -> noEff model
+
+myDraw               :: MyModel -> View IO MyAction
+myDraw model texture = do renderDiagramTo texture $ diagramDraw model
+                          pure Skip
+
 
 --------------------------------------------------------------------------------
 
+
 main :: IO ()
 main = do
-  app <- initializeSDLApp $ AppConfig { _appModel        = ()
+  app <- initializeSDLApp $ AppConfig { _appModel        = defaultModel
                                       , _handler         = myHandler
                                       , _startupAction   = Skip
                                       , _liftSDLEvent    = withDefaultSDLEvents SDLEvent
