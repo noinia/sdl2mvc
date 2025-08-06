@@ -22,11 +22,14 @@ import           SDL2MVC.Framework
 import           SDL2MVC.Reaction
 import           SDL2MVC.Render
 
+
+import qualified GI.Cairo.Render as Cairo
+
 --------------------------------------------------------------------------------
 -- * Model
 
 
-data MyModel = MyModel { _mousePosition :: Maybe (Point V2 Int)
+data MyModel = MyModel { _mousePosition :: !(Maybe (Point V2 Int))
                        }
              deriving (Show,Eq)
 
@@ -56,7 +59,7 @@ myHandler app model = \case
     SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
                                       in (model&mousePosition ?~ p)
                                          <# do print p
-                                               pure $ Continue Skip
+                                               pure $ Continue (RenderAction Render)
     _                              -> noEff model
   Skip                   -> noEff model
 
@@ -73,55 +76,65 @@ paneWidth    = 100
 toolBarWidth = 16
 
 
-diagramDraw :: MyModel -> V2 Int -> Diagram Cairo
+diagramDraw            :: MyModel -> V2 Int -> Diagram Cairo
 diagramDraw model dims = drawCursor (model^.mousePosition)
+                      <> blankCanvas dims
 
+  -- drawCursor (model^.mousePosition)
+
+
+
+drawCursor :: Maybe (Point V2 Int) -> Diagram Cairo
 drawCursor = \case
   Nothing -> mempty
-  Just p -> unitCircle & fc red
-                       & moveTo (fromIntegral <$> p)
-
-userInterface                  :: model -> V2 Int -> Diagram Cairo
-userInterface model canvasDims = vcat [ header   & sized (dims $ V2 w headerHeight)
-                                      , mainArea & centerXY
-                                                 & sized (dims $ V2 w h')
-                                      , footer   & sized (dims $ V2 w footerHeight)
-                                      ]
-                                 & centerXY
-
-  where
-    (V2 w h) = fromIntegral <$> canvasDims
-    h' = h - headerHeight - footerHeight
-    w' = w - toolBarWidth - paneWidth
-
-    header   = rect 1 1 & fc red
-                        & lcA transparent
-
-      -- mconcat [ rect w headerHeight & fc red
-      --                                        & lcA transparent
-      --                  -- , text "menu" & fc black
-      --                  ]
-
-    mainArea = hcat [ toolBar        & centerY
-                                     & sized (mkHeight h')
-                    , (canvas model) & sized (dims $ V2 w' h')
-                                     & showTrace
-                    , showTrace pane
-                    ]
-
-    footer   = mconcat [ text "footer" & fc black
-                       , rect w footerHeight & fc green
-                                             & lcA transparent
-                       ]
-
-    toolBar = vsep 2 [ (text (show i) `atop` item)
-                       & sized (mkWidth toolBarWidth)
-                     | i <- [1..10]]
-    item = rect 1 1 & fc white
-                    & sc green
+  Just p  -> traceShow ("cursor",p) $
+    unitCircle & fc red
+                        -- & moveTo (fromIntegral <$> p)
 
 
-    pane = rect 1 1 & fc yellow
+
+-- userInterface                 :: model -> V2 Int -> Diagram Cairo
+-- userInterface model  (V2 w h) = vcat [ header   & sized (dims $ V2 w headerHeight)
+--                                      , mainArea & centerXY
+--                                                  & sized (dims $ V2 w h')
+--                                       , footer   & sized (dims $ V2 w footerHeight)
+--                                       ]
+--                                  & centerXY
+
+--   where
+--     h' = h - headerHeight - footerHeight
+--     w' = w - toolBarWidth - paneWidth
+--     canvasSize = V2 w' h'
+
+
+--     header   = rect 1 1 & fc red
+--                         & lcA transparent
+
+--       -- mconcat [ rect w headerHeight & fc red
+--       --                                        & lcA transparent
+--       --                  -- , text "menu" & fc black
+--       --                  ]
+
+--     mainArea = hcat [ toolBar        & centerY
+--                                      & sized (mkHeight $ fromIntegral h')
+--                     , (canvas model canvasSize) & sized (dims $ fmap fromIntegral canvasSize)
+--                                      & showTrace
+--                     , showTrace pane
+--                     ]
+
+--     footer   = mconcat [ text "footer" & fc black
+--                        , rect w (fromIntegral footerHeight) & fc green
+--                                                             & lcA transparent
+--                        ]
+
+--     toolBar = vsep 2 [ (text (show i) `atop` item)
+--                        & sized (mkWidth $ fromIntegral toolBarWidth)
+--                      | i <- [1..10]]
+--     item = rect 1 1 & fc white
+--                     & sc green
+
+
+--     pane = rect 1 1 & fc yellow
 
 
   -- vcat [ header
@@ -138,17 +151,17 @@ userInterface model canvasDims = vcat [ header   & sized (dims $ V2 w headerHeig
   --   pane    = rect (mkHeight 1) & fc yellow
 
 -- canvas       :: model -> Diagram Cairo
-canvas model = mconcat [ drawGeometries model
-                       , blankCanvas model
-                       ] & bg white
+canvas model dims = mconcat [ drawGeometries model
+                            , blankCanvas dims
+                            ] & bg white
 
 drawGeometries model = vcat [ circle 1 & fc blue
                             , rect 2 1 & fc green
                             ]
 
-blankCanvas    :: model -> Diagram Cairo
-blankCanvas _ = mempty
-
+blankCanvas                               :: V2 Int -> Diagram Cairo
+blankCanvas (fmap fromIntegral -> V2 w h) = rect w h & fc  white
+                                                     & lcA transparent
 
 
 -- -- | draw on SDL texture with Render monad from Cairo
@@ -184,20 +197,31 @@ blankCanvas _ = mempty
 
 
 myDraw               :: MyModel -> View IO MyAction
-myDraw model texture = do renderDiagramTo texture $ diagramDraw model
-                          pure Skip
+myDraw model texture =
+  -- do
+  --   renderDiagramTo texture $ diagramDraw model
+  --   pure Skip
+  Skip <$ case fmap fromIntegral <$> model^.mousePosition of
+    Nothing -> print "cursor outside screen"
+    Just (P (V2 x y)) -> do print ("mousepos",x,y)
+                            withCairoTexture texture $ do
+                                    Cairo.setSourceRGB 1 1 1
+                                    Cairo.rectangle 0 0 800 100
+                                    Cairo.fill
+                                    Cairo.setSourceRGB 1 0 0
+                                    Cairo.rectangle x y 20 20
+                                    Cairo.fill
 
 
 --------------------------------------------------------------------------------
 
-
 main :: IO ()
-main = do
-  app <- initializeSDLApp $ AppConfig { _appModel        = defaultModel
-                                      , _handler         = myHandler
-                                      , _startupAction   = Skip
-                                      , _liftSDLEvent    = withDefaultSDLEvents SDLEvent
-                                      , _liftRenderEvent = RenderAction
-                                      , _appRender       = myDraw
-                                      }
-  runApp app
+main = runApp $
+       AppConfig
+         { _appModel        = defaultModel
+         , _handler         = myHandler
+         , _startupAction   = Skip
+         , _liftSDLEvent    = withDefaultSDLEvents SDLEvent
+         , _liftRenderEvent = RenderAction
+         , _appRender       = myDraw
+         }

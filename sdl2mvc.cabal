@@ -37,7 +37,7 @@ common setup
         , text                    >= 2.0
 
     default-language: GHC2024
-    -- default-extensions:
+    default-extensions:
       --   DataKinds
       -- , TypeFamilies
       -- , GADTs
@@ -51,7 +51,7 @@ common setup
       -- , PatternSynonyms
       -- , TupleSections
       -- , LambdaCase
-      -- , ViewPatterns
+      ViewPatterns
       -- , FunctionalDependencies
 
 

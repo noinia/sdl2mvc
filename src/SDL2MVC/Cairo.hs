@@ -6,6 +6,7 @@ module SDL2MVC.Cairo
   , renderDiagramTo
   ) where
 
+import           Control.Exception (bracket)
 import qualified Diagrams.Backend.Cairo as Diagrams
 import           Diagrams.Backend.Cairo.Internal (Options(..))
 import qualified Diagrams.Core as Diagrams
@@ -19,8 +20,6 @@ import qualified SDL
 --------------------------------------------------------------------------------
 
 -- ported from sdl2-cairo
-
-
 
 -- | create new texture for Cairo with given size
 createCairoTexture    :: SDL.Renderer -> V2 CInt -> IO SDL.Texture
