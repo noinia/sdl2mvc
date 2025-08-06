@@ -15,9 +15,6 @@ import           Control.Concurrent.Async (mapConcurrently_, withAsync, uninterr
 import           Control.Concurrent.STM (atomically)
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
-import           Diagrams hiding (Render)
-import           Diagrams.Backend.Cairo
-import           Diagrams.Prelude hiding (Render)
 import           Effectful
 import           GHC.Natural
 import           Linear

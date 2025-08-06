@@ -3,14 +3,14 @@ module SDL2MVC.Cairo
   , createCairoTexture'
   , withCairoTexture
 
-  , renderDiagramTo
+  -- , renderDiagramTo
   ) where
 
 import           Control.Exception (bracket)
-import qualified Diagrams.Backend.Cairo as Diagrams
-import           Diagrams.Backend.Cairo.Internal (Options(..))
-import qualified Diagrams.Core as Diagrams
-import qualified Diagrams.Prelude as Diagrams
+-- import qualified Diagrams.Backend.Cairo as Diagrams
+-- import           Diagrams.Backend.Cairo.Internal (Options(..))
+-- import qualified Diagrams.Core as Diagrams
+-- import qualified Diagrams.Prelude as Diagrams
 import           Foreign.C.Types (CInt)
 import           Foreign.Ptr (castPtr)
 import qualified GI.Cairo.Render as Cairo
@@ -53,6 +53,7 @@ withCairoTexture' t m = do
     mapFormat SDL.RGB888   = Just Cairo.FormatRGB24
     mapFormat _            = Nothing
 
+{-
 -- | Given a function that takes the dimensions of the canvas and produces a diagram,
 -- renders the diagram to the given texture.
 renderDiagramTo                 :: SDL.Texture
@@ -69,3 +70,4 @@ renderDiagramTo texture diagram = do
           }
         (_, render) = Diagrams.renderDia Diagrams.Cairo options (diagram dims)
     withCairoTexture texture render
+-}

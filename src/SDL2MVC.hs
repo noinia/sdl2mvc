@@ -9,12 +9,10 @@ import           Control.Concurrent.STM (atomically)
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
 import           Debug.Trace
-import           Diagrams hiding (Render)
-import           Diagrams.Backend.Cairo
-import           Diagrams.Prelude hiding (Render)
 import           Effectful
 import           GHC.Natural
 import           Linear
+import           Linear.Affine
 import qualified SDL
 import           SDL2MVC.App
 import           SDL2MVC.Cairo
@@ -58,8 +56,7 @@ myHandler app model = \case
   SDLEvent e                   -> case SDL.eventPayload e of
     SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
                                       in (model&mousePosition ?~ p)
-                                         <# do print p
-                                               pure $ Continue (RenderAction Render)
+                                         <# do pure $ Continue (RenderAction Render)
     _                              -> noEff model
     -- SDL.WindowShownEvent _         -> model <# (pure $ Continue (RenderAction Render))
     -- SDL.WindowExposedEvent _       -> model <# (pure $ Continue (RenderAction Render))
@@ -80,92 +77,6 @@ paneWidth    = 100
 toolBarWidth = 16
 
 
-diagramDraw            :: MyModel -> V2 Int -> Diagram Cairo
-diagramDraw model dims = drawCursor (model^.mousePosition)
-                      <> blankCanvas dims
-
-  -- drawCursor (model^.mousePosition)
-
-
-
-drawCursor :: Maybe (Point V2 Int) -> Diagram Cairo
-drawCursor = \case
-  Nothing -> mempty
-  Just p  -> traceShow ("cursor",p) $
-    unitCircle & fc red
-                        -- & moveTo (fromIntegral <$> p)
-
-
-
--- userInterface                 :: model -> V2 Int -> Diagram Cairo
--- userInterface model  (V2 w h) = vcat [ header   & sized (dims $ V2 w headerHeight)
---                                      , mainArea & centerXY
---                                                  & sized (dims $ V2 w h')
---                                       , footer   & sized (dims $ V2 w footerHeight)
---                                       ]
---                                  & centerXY
-
---   where
---     h' = h - headerHeight - footerHeight
---     w' = w - toolBarWidth - paneWidth
---     canvasSize = V2 w' h'
-
-
---     header   = rect 1 1 & fc red
---                         & lcA transparent
-
---       -- mconcat [ rect w headerHeight & fc red
---       --                                        & lcA transparent
---       --                  -- , text "menu" & fc black
---       --                  ]
-
---     mainArea = hcat [ toolBar        & centerY
---                                      & sized (mkHeight $ fromIntegral h')
---                     , (canvas model canvasSize) & sized (dims $ fmap fromIntegral canvasSize)
---                                      & showTrace
---                     , showTrace pane
---                     ]
-
---     footer   = mconcat [ text "footer" & fc black
---                        , rect w (fromIntegral footerHeight) & fc green
---                                                             & lcA transparent
---                        ]
-
---     toolBar = vsep 2 [ (text (show i) `atop` item)
---                        & sized (mkWidth $ fromIntegral toolBarWidth)
---                      | i <- [1..10]]
---     item = rect 1 1 & fc white
---                     & sc green
-
-
---     pane = rect 1 1 & fc yellow
-
-
-  -- vcat [ header
-  --                        , mainArea
-  --                        , footer
-  --                        ]
-  -- where
-  --   header = rect (mkHeight 1) & fc blue
-
-  --   footer = rect (mkHeight 1) & fc red
-
-
-  --   toolBar = rect (mkHeight 1) & fc green
-  --   pane    = rect (mkHeight 1) & fc yellow
-
--- canvas       :: model -> Diagram Cairo
-canvas model dims = mconcat [ drawGeometries model
-                            , blankCanvas dims
-                            ] & bg white
-
-drawGeometries model = vcat [ circle 1 & fc blue
-                            , rect 2 1 & fc green
-                            ]
-
-blankCanvas                               :: V2 Int -> Diagram Cairo
-blankCanvas (fmap fromIntegral -> V2 w h) = rect w h & fc  white
-                                                     & lcA transparent
 
 
 -- -- | draw on SDL texture with Render monad from Cairo
@@ -207,8 +118,7 @@ myDraw model texture =
   --   pure Skip
   Skip <$ case fmap fromIntegral <$> model^.mousePosition of
     Nothing -> print "cursor outside screen"
-    Just (P (V2 x y)) -> do print ("mousepos",x,y)
-                            SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
+    Just (P (V2 x y)) -> do SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
                             withCairoTexture texture $ do
                                     Cairo.setSourceRGB 1 1 1
                                     Cairo.rectangle 0 0 (fromIntegral w) (fromIntegral h)
