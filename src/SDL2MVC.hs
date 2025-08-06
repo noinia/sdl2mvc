@@ -226,7 +226,7 @@ main = runApp $
        AppConfig
          { _appModel        = defaultModel
          , _handler         = myHandler
-         , _startupAction   = Skip
+         , _startupAction   = Nothing
          , _liftSDLEvent    = withDefaultSDLEvents SDLEvent
          , _liftRenderEvent = RenderAction
          , _appRender       = myDraw

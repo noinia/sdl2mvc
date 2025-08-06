@@ -3,7 +3,6 @@ module SDL2MVC.Render
   ) where
 
 import           Control.Lens
-import           Data.Word (Word8)
 import           Effectful
 import qualified SDL
 import           SDL2MVC.App
@@ -22,9 +21,7 @@ handleRender app model = \case
                           -- clear previous rendering
                           -- SDL.clear renderer
                           -- now render
-                          liftIO $ print "rendering"
                           act <- (app^.config.appRender) model texture
-                          liftIO $ print "done rendering"
                           -- display the drawing
                           SDL.copy renderer texture Nothing Nothing
                           SDL.present renderer

@@ -13,6 +13,7 @@ import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Exception (bracket)
 import           Control.Lens
 import           Control.Monad.Managed
+import           Data.Maybe (maybeToList)
 import           GHC.Natural
 import qualified SDL
 import           SDL2MVC.App
@@ -55,8 +56,7 @@ withSDLApp appCfg k = do
     texture'  <- managed $ bracket (createCairoTexture' renderer' window')
                                    SDL.destroyTexture
     -- initialize the event queue
-    let initialActions = [ Continue $ appCfg^.startupAction
-                         ]
+    let initialActions = maybeToList (Continue <$> appCfg^.startupAction)
     queue  <- liftIO . atomically $ do q <- Queue.newTBQueue maxQueueSize
                                        mapM_ (Queue.writeTBQueue q) initialActions
                                        pure q

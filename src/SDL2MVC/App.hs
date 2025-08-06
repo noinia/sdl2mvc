@@ -27,7 +27,7 @@ type View m action = SDL.Texture -> m action
 data AppConfig m model action =
   AppConfig { _appModel        :: model
             , _handler         :: App m model action -> Handler m model action
-            , _startupAction   :: action
+            , _startupAction   :: Maybe action
             , _liftSDLEvent    :: SDL.Event -> LoopAction action
             , _liftRenderEvent :: Render -> action
             , _appRender       :: model -> View m action
