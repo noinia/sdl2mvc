@@ -22,6 +22,7 @@ import           SDL2MVC.Reaction
 import           Debug.Trace
 --------------------------------------------------------------------------------
 
+-- | maximum queue size
 maxQueueSize :: Natural
 maxQueueSize = 1000
 
@@ -35,16 +36,19 @@ runApp = flip withSDLApp runApp'
 
 -- | Initialize the app
 withSDLApp          :: AppConfig m model action
+                    -- ^ The configuration describing how to set up our application
                     -> (App m model action -> IO ())
-                    -- ^ the continuation; i.e. some computation to perform with the actual App.
+                    -- ^ the continuation; i.e. the actual application
                     -> IO ()
 withSDLApp appCfg k = do
   SDL.initializeAll
   let windowCfg   = SDL.defaultWindow
       rendererCfg = SDL.defaultRenderer { SDL.rendererType = SDL.SoftwareRenderer
                                         }
+                    -- to use the texture we need to use the softwarerenderer
+  -- Initialize the window, renderer, and texture that we draw on
   runManaged $ do
-    window'   <- managed $ bracket (SDL.createWindow "SDL2MVC App" windowCfg)
+    window'   <- managed $ bracket (SDL.createWindow (appCfg^.windowTitle) windowCfg)
                                    SDL.destroyWindow
     renderer' <- managed $ bracket (SDL.createRenderer window' (-1) rendererCfg)
                                    SDL.destroyRenderer
@@ -52,8 +56,6 @@ withSDLApp appCfg k = do
                                    SDL.destroyTexture
     -- initialize the event queue
     let initialActions = [ Continue $ appCfg^.startupAction
-                         -- , AppAction WaitSDLEvent
-                         -- , AppAction . UIStateAction . UIState.Redraw $ (appCfg^.render) m
                          ]
     queue  <- liftIO . atomically $ do q <- Queue.newTBQueue maxQueueSize
                                        mapM_ (Queue.writeTBQueue q) initialActions
@@ -94,58 +96,24 @@ runApp' app = go (app^.config.appModel)
     queue        = app^.eventQueue
     handleAction = app^.config.handler
 
-    -- -- start listening for sdl events (pushing them into our own event queue), and
-    -- -- start our handler
-    -- startup model = do
-    --                   (app^.config.liftSDLEvent $ e)
-    --   pollEvents
-
-
-
-
-    --   withAsync awaitSDLEvent $ \sdlWaiter -> do
-    --                      !_ <- go model
-    --                      uninterruptibleCancel sdlWaiter
-
-    -- -- | indefinitely wait for SDL events, pushing them into our own event Queue
-    -- awaitSDLEvent = do e <- SDL.waitEvent
-    --                    atomically $ Queue.writeTBQueue queue (app^.config.liftSDLEvent $ e)
-    --                    awaitSDLEvent
-
-    -- | The main app loop; we read the next event from the queue, and
-    -- then handle it. In turn, this may again trigger further event
-    -- handling.
+    -- | The main app loop; we essentially get the current sdl events and the current
+    -- app events, and handle them in an interlaving manner. When we've handled
+    -- all events, we continue the loop.
+    --
+    -- we interleave the events to prevent starvation.
     go   :: model -> IO ()
     go m = do sdlEvents <- fmap (app^.config.liftSDLEvent) <$> SDL.pollEvents
               appEvents <- atomically $ Queue.flushTBQueue queue
               handleAll m $ interleaved sdlEvents appEvents
-
+    -- | handleAll does the actual event handling, whereas the go function collects the
+    -- events to run.
     handleAll model = \case
       []     -> go model
       e:evts -> case e of
-        Shutdown     -> putStrLn "shutting down"
-        Continue act -> case traceShow ("handling",act) $ handleAction app model act of
+        Shutdown     -> pure ()
+        Continue act -> case handleAction app model act of
           Reaction model' effs -> do scheduleAll effs  -- schedules additional actions
                                      handleAll model' evts
-
-    --           -- e    <- atomically $ do
-    --           --           l <- Queue.lengthTBQueue queue
-    --           --           let (toSchedule,rest) = List.genericSplitAt (maxQueueSize - l) evts
-    --           --           for_ toSchedule $ Queue.writeTBQueue queue
-    --           --           e <- Queue.readTBQueue queue
-    --           --           case rest of
-    --           --             []                -> pure ()
-    --           --             (f:droppedEvents) -> do Queue.writeTBQueue queue f
-    --           --                                     when (not $ null droppedEvents) $
-    --           --                                       putStrLn "WARNING: Dropped Eevnts!"
-    --           --           pure e
-    --           -- handle m e
-
-    -- handle        :: model -> LoopAction action -> IO model
-    -- handle !model = \case
-    --   Shutdown     -> do putStrLn "shutting down"
-    --                      pure model
-    --   Continue act ->
 
     scheduleAll :: [IO (LoopAction action)] -> IO ()
     scheduleAll = mapConcurrently_ (>>= atomically . Queue.writeTBQueue queue)

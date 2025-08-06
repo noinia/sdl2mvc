@@ -230,4 +230,5 @@ main = runApp $
          , _liftSDLEvent    = withDefaultSDLEvents SDLEvent
          , _liftRenderEvent = RenderAction
          , _appRender       = myDraw
+         , _windowTitle     = "My SDL2MVC App"
          }

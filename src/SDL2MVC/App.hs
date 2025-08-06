@@ -2,6 +2,7 @@
 module SDL2MVC.App
   ( AppConfig(..)
   , appModel, handler, startupAction, liftSDLEvent, liftRenderEvent, appRender
+  , windowTitle
 
   , App(..)
   , config, windowRef, rendererRef, textureRef, eventQueue
@@ -11,6 +12,7 @@ module SDL2MVC.App
 
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
+import           Data.Text (Text)
 import qualified SDL
 import           SDL2MVC.Reaction
 
@@ -29,7 +31,9 @@ data AppConfig m model action =
             , _liftSDLEvent    :: SDL.Event -> LoopAction action
             , _liftRenderEvent :: Render -> action
             , _appRender       :: model -> View m action
+            , _windowTitle     :: Text
             }
+
 
 -- | A raw SDL2MVC App
 data App m model action =
