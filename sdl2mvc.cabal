@@ -24,6 +24,7 @@ common setup
         , diagrams-core           >= 1.5.1
         , diagrams-lib            >= 1.4.6.2
         , colour                  >= 2.3.6
+        , managed                 >= 1.0.10
         , hgeometry-combinatorial >= 1.0
         , hgeometry               >= 1.0
         , hgeometry:kernel

@@ -61,6 +61,10 @@ myHandler app model = \case
                                          <# do print p
                                                pure $ Continue (RenderAction Render)
     _                              -> noEff model
+    -- SDL.WindowShownEvent _         -> model <# (pure $ Continue (RenderAction Render))
+    -- SDL.WindowExposedEvent _       -> model <# (pure $ Continue (RenderAction Render))
+    -- SDL.WindowGainedKeyboardFocusEvent _  -> model <# (pure $ Continue (RenderAction Render))
+
   Skip                   -> noEff model
 
 
@@ -204,12 +208,14 @@ myDraw model texture =
   Skip <$ case fmap fromIntegral <$> model^.mousePosition of
     Nothing -> print "cursor outside screen"
     Just (P (V2 x y)) -> do print ("mousepos",x,y)
+                            SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
                             withCairoTexture texture $ do
                                     Cairo.setSourceRGB 1 1 1
-                                    Cairo.rectangle 0 0 800 100
+                                    Cairo.rectangle 0 0 (fromIntegral w) (fromIntegral h)
                                     Cairo.fill
-                                    Cairo.setSourceRGB 1 0 0
-                                    Cairo.rectangle x y 20 20
+                                    Cairo.setSourceRGB 1 0.5 0
+                                    Cairo.arc x y 2 0 (2*pi)
+                                    -- Cairo.rectangle x y 20 20
                                     Cairo.fill
 
 

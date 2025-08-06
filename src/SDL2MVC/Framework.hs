@@ -12,6 +12,7 @@ import           Control.Concurrent.STM (atomically)
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Exception (bracket)
 import           Control.Lens
+import           Control.Monad.Managed
 import           GHC.Natural
 import qualified SDL
 import           SDL2MVC.App
@@ -34,40 +35,37 @@ runApp = flip withSDLApp runApp'
 
 -- | Initialize the app
 withSDLApp          :: AppConfig m model action
-                    -> (App m model action -> IO res)
+                    -> (App m model action -> IO ())
                     -- ^ the continuation; i.e. some computation to perform with the actual App.
-                    -> IO res
+                    -> IO ()
 withSDLApp appCfg k = do
   SDL.initializeAll
   let windowCfg   = SDL.defaultWindow
       rendererCfg = SDL.defaultRenderer { SDL.rendererType = SDL.SoftwareRenderer
                                         }
-  bracket (SDL.createWindow "SDL2MVC App" windowCfg)
-          SDL.destroyWindow                            $ \window'   -> do
-    bracket (SDL.createRenderer window' (-1) rendererCfg)
-            SDL.destroyRenderer                        $ \renderer' -> do
-      bracket (createCairoTexture' renderer' window')
-              SDL.destroyTexture                       $ \texture'  -> do
-        -- initialize the event queue
-        let initialActions = [ Continue . (appCfg^.liftRenderEvent) $ Render
-                             , Continue $ appCfg^.startupAction
-                             -- , AppAction WaitSDLEvent
-                             -- , AppAction . UIStateAction . UIState.Redraw $ (appCfg^.render) m
-                             ]
-        queue  <- atomically $ do q <- Queue.newTBQueue maxQueueSize
-                                  mapM_ (Queue.writeTBQueue q) initialActions
-                                  pure q
+  runManaged $ do
+    window'   <- managed $ bracket (SDL.createWindow "SDL2MVC App" windowCfg)
+                                   SDL.destroyWindow
+    renderer' <- managed $ bracket (SDL.createRenderer window' (-1) rendererCfg)
+                                   SDL.destroyRenderer
+    texture'  <- managed $ bracket (createCairoTexture' renderer' window')
+                                   SDL.destroyTexture
+    -- initialize the event queue
+    let initialActions = [ Continue $ appCfg^.startupAction
+                         -- , AppAction WaitSDLEvent
+                         -- , AppAction . UIStateAction . UIState.Redraw $ (appCfg^.render) m
+                         ]
+    queue  <- liftIO . atomically $ do q <- Queue.newTBQueue maxQueueSize
+                                       mapM_ (Queue.writeTBQueue q) initialActions
+                                       pure q
 
-        -- run the actuall application
-        k $ App { _config      = appCfg
-                , _windowRef   = window'
-                , _rendererRef = renderer'
-                , _textureRef  = texture'
-                , _eventQueue  = queue
-                }
-
-
-
+    -- run the actuall application
+    liftIO . k $ App { _config      = appCfg
+                     , _windowRef   = window'
+                     , _rendererRef = renderer'
+                     , _textureRef  = texture'
+                     , _eventQueue  = queue
+                     }
 
 
 -- | Handles some of the default events, in particular closing the window and quitting
