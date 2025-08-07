@@ -68,8 +68,8 @@ data MyAction = RenderAction Render
 
 ----------------------------------------
 
-myHandler           :: ( Send (LoopAction MyAction) :> es
-                       , IOE :> es
+myHandler           :: ( Send' MyAction :> es
+                       , IOE            :> es
                        )
                     => App es MyModel MyAction
                     -> MyModel -> MyAction -> Eff es (Updated MyModel)

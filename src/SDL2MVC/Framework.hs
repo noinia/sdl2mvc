@@ -4,6 +4,7 @@ module SDL2MVC.Framework
   , withSDLApp
   , runApp'
   , withDefaultSDLEvents
+  , Send'
   ) where
 
 
@@ -11,7 +12,6 @@ import qualified Control.Concurrent.STM as STM
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Exception (bracket)
 import           Control.Lens
-import           Control.Monad.Managed
 import           Data.Maybe (maybeToList)
 import           Effectful
 import           Effectful.Concurrent
@@ -22,9 +22,10 @@ import           GHC.Natural
 import qualified SDL
 import           SDL2MVC.App
 import           SDL2MVC.Cairo
-import           SDL2MVC.Reaction
-import           SDL2MVC.Updated
+import           SDL2MVC.Render
 import           SDL2MVC.Send
+import           SDL2MVC.Updated
+import           SDL2MVC.Reaction
 
 import           Debug.Trace
 --------------------------------------------------------------------------------
@@ -36,7 +37,7 @@ maxQueueSize = 1000
 --------------------------------------------------------------------------------
 
 -- | Main entrypoint. Runs an SDL2MV app given by the appConfig
-runApp :: ( es ~ Send (LoopAction msg) : Resource : Concurrent : os
+runApp :: ( es ~ Send' msg : Resource : Concurrent : os
           , IOE :> os
           )
        => AppConfig es model msg
@@ -46,7 +47,7 @@ runApp = flip withSDLApp runApp'
 --------------------------------------------------------------------------------
 
 -- | Initialize the app
-withSDLApp          :: ( es ~ Send (LoopAction msg) : Resource : Concurrent : os
+withSDLApp          :: ( es ~ Send' msg : Resource : Concurrent : os
                        , IOE :> os
                        )
                     => AppConfig es model msg
@@ -101,52 +102,46 @@ interleaved xs ys = case xs of
 
 -- | Runs the app
 runApp'     :: forall os es model msg.
-               ( es ~ Send (LoopAction msg) : os
+               ( es ~ Send' msg : os
                , IOE        :> os
                , Concurrent :> os
                , Resource   :> os
                )
             => App es model msg
             -> Eff os ()
-runApp' app = go (app^.config.appModel)
+runApp' app = runSendWith queue $ go (app^.config.appModel)
   where
     queue        = app^.eventQueue
 
-    handleAction           :: model -> msg -> Eff os (Updated model)
-    handleAction model msg = runSendWith queue $ (app^.config.handler) app model msg
+    handleAction           :: model -> msg -> Eff es (Updated model)
+    handleAction model msg = (app^.config.handler) app model msg
 
     -- | The main app loop; we essentially get the current sdl events and the current
     -- app events, and handle them in an interlaving manner. When we've handled
     -- all events, we continue the loop.
     --
     -- we interleave the events to prevent starvation.
-    go   :: model -> Eff os ()
+    go   :: model -> Eff es ()
     go m = do sdlEvents <- fmap (app^.config.liftSDLEvent) <$> liftIO SDL.pollEvents
               appEvents <- atomically $ flushTBQueue queue
               handleAll m $ interleaved sdlEvents appEvents
     -- | handleAll does the actual event handling, whereas the go function collects the
     -- events to run.
-    handleAll       :: model -> [LoopAction msg] -> Eff os ()
+    handleAll       :: model -> [LoopAction msg] -> Eff es ()
     handleAll model = \case
       []     -> go model
       e:evts -> case e of
         Shutdown     -> pure ()
         Continue act -> handleAction model act >>= \case
           Unchanged      -> handleAll model  evts
-          Changed model' -> handleAll model' evts
+          Changed model' -> do -- sendMessage (Continue Render)
+                               handleAll model' evts
 
-          -- Reaction model' effs -> do scheduleAll effs  -- schedules additional msgs
-          --                            handleAll model' evts
+type Send' msg = Send (LoopAction msg) -- (RenderAction msg))
 
-    -- scheduleAll :: [Eff os (LoopAction msg)] -> Eff os ()
-    -- scheduleAll = mapConcurrently_ (\act -> do msg <- act
-    --                                            atomically . writeTBQueue queue $ msg
-    --                                )
-
-
-data WithRenderAction msg = RenderAction Render
-                          | Act msg
-                          deriving (Show,Eq)
+data RenderAction msg = Render
+                      | Act msg
+                      deriving (Show,Eq)
 
 
 -- withReRendering     :: Handler m model msg
