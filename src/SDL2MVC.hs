@@ -37,6 +37,8 @@ import           SDL2MVC.Cairo
 import           SDL2MVC.Framework
 import           SDL2MVC.Reaction
 import           SDL2MVC.Render
+import           SDL2MVC.Updated
+import           SDL2MVC.Send
 
 import           Data.Text (Text)
 --------------------------------------------------------------------------------
@@ -66,18 +68,23 @@ data MyAction = RenderAction Render
 
 ----------------------------------------
 
+myHandler           :: ( Send (LoopAction MyAction) :> es
+                       , IOE :> es
+                       )
+                    => App es MyModel MyAction
+                    -> MyModel -> MyAction -> Eff es (Updated MyModel)
 myHandler app model = \case
-  RenderAction renderAct -> handleRender app model renderAct
+  RenderAction renderAct -> Unchanged <$ handleRender app model renderAct
   SDLEvent e                   -> case SDL.eventPayload e of
     SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
-                                      in (model&mousePosition ?~ p)
-                                         <# do pure $ Continue (RenderAction Render)
-    _                              -> noEff model
+                                      in do sendMessage $ Continue (RenderAction Render)
+                                            pure $ Changed (model&mousePosition ?~ p)
+    _                              -> pure Unchanged
     -- SDL.WindowShownEvent _         -> model <# (pure $ Continue (RenderAction Render))
     -- SDL.WindowExposedEvent _       -> model <# (pure $ Continue (RenderAction Render))
     -- SDL.WindowGainedKeyboardFocusEvent _  -> model <# (pure $ Continue (RenderAction Render))
 
-  Skip                   -> noEff model
+  Skip                   -> pure Unchanged
 
 
 
@@ -473,7 +480,7 @@ myDraw model texture =
   -- do
   --   renderDiagramTo texture $ diagramDraw model
   --   pure Skip
-  Skip <$ case fmap fromIntegral <$> model^.mousePosition of
+  case fmap fromIntegral <$> model^.mousePosition of
     Nothing -> liftIO $ print "cursor outside screen"
     Just p  -> do SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
                   liftIO $ withCairoTexture texture $ do
@@ -505,7 +512,7 @@ myDraw model texture =
 --------------------------------------------------------------------------------
 
 main :: IO ()
-main = runEff . runApp $
+main = runEff $ runApp $
        AppConfig
          { _appModel        = defaultModel
          , _handler         = myHandler

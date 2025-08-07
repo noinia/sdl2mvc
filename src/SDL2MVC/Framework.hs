@@ -23,6 +23,8 @@ import qualified SDL
 import           SDL2MVC.App
 import           SDL2MVC.Cairo
 import           SDL2MVC.Reaction
+import           SDL2MVC.Updated
+import           SDL2MVC.Send
 
 import           Debug.Trace
 --------------------------------------------------------------------------------
@@ -34,21 +36,24 @@ maxQueueSize = 1000
 --------------------------------------------------------------------------------
 
 -- | Main entrypoint. Runs an SDL2MV app given by the appConfig
-runApp :: IOE :> es
-       => AppConfig (Resource : Concurrent : es) model msg -> Eff es ()
+runApp :: ( es ~ Send (LoopAction msg) : Resource : Concurrent : os
+          , IOE :> os
+          )
+       => AppConfig es model msg
+       -> Eff os ()
 runApp = flip withSDLApp runApp'
 
 --------------------------------------------------------------------------------
 
 -- | Initialize the app
-withSDLApp          :: ( IOE :> es
+withSDLApp          :: ( es ~ Send (LoopAction msg) : Resource : Concurrent : os
+                       , IOE :> os
                        )
-                    => AppConfig (Resource : Concurrent : es) model msg
+                    => AppConfig es model msg
                     -- ^ The configuration describing how to set up our application
-                    -> (App (Resource : Concurrent : es) model msg ->
-                         Eff (Resource : Concurrent  : es) ())
+                    -> (App es model msg -> Eff (Resource : Concurrent : os) ())
                     -- ^ the continuation; i.e. the actual application
-                    -> Eff es ()
+                    -> Eff os ()
 withSDLApp appCfg withApp = do
   liftIO $ SDL.initializeAll
   let rendererCfg = SDL.defaultRenderer { SDL.rendererType = SDL.SoftwareRenderer
@@ -95,13 +100,20 @@ interleaved xs ys = case xs of
 
 
 -- | Runs the app
-runApp'     :: forall os model msg.
-               (IOE :> os, Concurrent :> os)
-            => App os model msg -> Eff os ()
+runApp'     :: forall os es model msg.
+               ( es ~ Send (LoopAction msg) : os
+               , IOE        :> os
+               , Concurrent :> os
+               , Resource   :> os
+               )
+            => App es model msg
+            -> Eff os ()
 runApp' app = go (app^.config.appModel)
   where
     queue        = app^.eventQueue
-    handleAction = app^.config.handler
+
+    handleAction           :: model -> msg -> Eff os (Updated model)
+    handleAction model msg = runSendWith queue $ (app^.config.handler) app model msg
 
     -- | The main app loop; we essentially get the current sdl events and the current
     -- app events, and handle them in an interlaving manner. When we've handled
@@ -119,14 +131,17 @@ runApp' app = go (app^.config.appModel)
       []     -> go model
       e:evts -> case e of
         Shutdown     -> pure ()
-        Continue act -> case handleAction app model act of
-          Reaction model' effs -> do scheduleAll effs  -- schedules additional msgs
-                                     handleAll model' evts
+        Continue act -> handleAction model act >>= \case
+          Unchanged      -> handleAll model  evts
+          Changed model' -> handleAll model' evts
 
-    scheduleAll :: [Eff os (LoopAction msg)] -> Eff os ()
-    scheduleAll = mapConcurrently_ (\act -> do msg <- act
-                                               atomically . writeTBQueue queue $ msg
-                                   )
+          -- Reaction model' effs -> do scheduleAll effs  -- schedules additional msgs
+          --                            handleAll model' evts
+
+    -- scheduleAll :: [Eff os (LoopAction msg)] -> Eff os ()
+    -- scheduleAll = mapConcurrently_ (\act -> do msg <- act
+    --                                            atomically . writeTBQueue queue $ msg
+    --                                )
 
 
 data WithRenderAction msg = RenderAction Render

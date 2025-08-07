@@ -36,8 +36,9 @@ infix <#
 model <# act = Reaction model [act]
 
 
-type Handler m model action = model -> action
-                            -> Reaction m model (LoopAction action)
+type Handler es model action = model -> action -> Eff es (Updated model)
+
+-- Reaction m model (LoopAction action)
 
 
 -- data WithStandardActions action = RenderAction Render

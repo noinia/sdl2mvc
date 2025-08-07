@@ -22,12 +22,13 @@ import           Data.Default.Class
 import           Data.Text (Text, pack)
 import qualified SDL
 import           SDL2MVC.Reaction
+import           SDL2MVC.Send
 import           Effectful
 
 --------------------------------------------------------------------------------
 
 
-type View (es :: [Effect]) msg = SDL.Texture -> Eff es msg
+type View (es :: [Effect]) msg = SDL.Texture -> Eff es ()
 
 
 data Extended model where
@@ -47,7 +48,7 @@ getModel (Extended app) = _appModel . _config $ app
 -- |  Configuration data for the App
 data AppConfig (es :: [Effect]) model action =
   AppConfig { _appModel        :: model
-            , _handler         :: App es model action -> Handler (Eff es) model action
+            , _handler         :: App es model action -> Handler es model action
             , _startupAction   :: Maybe action
             , _liftSDLEvent    :: SDL.Event -> LoopAction action
             , _liftRenderEvent :: Render -> action
