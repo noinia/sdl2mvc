@@ -65,7 +65,7 @@ library
         SDL2MVC.Reaction
         SDL2MVC.Render
         SDL2MVC.Framework
-
+        SDL2MVC.Updated
 
     -- other-modules:
     -- other-extensions:
@@ -81,6 +81,18 @@ executable sdl2mvc
 
     hs-source-dirs:   app
     default-language: GHC2024
+
+executable debugger
+    import:           setup
+    main-is:          Debugger.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends:
+        sdl2mvc
+
+    hs-source-dirs:   app
+    default-language: GHC2024
+
 
 test-suite sdl2mvc-test
     import:           setup

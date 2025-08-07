@@ -56,15 +56,14 @@ defaultModel = MyModel { _mousePosition = Nothing
 --------------------------------------------------------------------------------
 -- * Controller
 
-
 data MyAction = RenderAction Render
               | SDLEvent SDL.Event
               | Skip
               deriving (Show,Eq)
 
+-- data WithBasicActions = LoopAction RenderAction
 
 ----------------------------------------
-
 
 myHandler app model = \case
   RenderAction renderAct -> handleRender app model renderAct
@@ -257,8 +256,8 @@ toPoints = fmap (\p -> p^.asPoint &coordinates %~ realToFrac)
 
 
 myRectangles =
-  [ Rectangle (Point2 10 10)   (Point2 200 100) :+ (def&pathColor .~ FillOnly (opaque red))
-  , Rectangle (Point2 100 100) (Point2 250 250) :+ (def&pathColor .~ FillOnly (opaque blue))
+  [ Rectangle origin (Point2 0.5 0.5)       :+ (def&pathColor .~ FillOnly (opaque red))
+  , Rectangle (Point2 (-1) (-1)) origin :+ (def&pathColor .~ FillOnly (opaque blue))
   ]
 
 myTriangles = [ Triangle origin (Point2 400 10) (Point2 430 30) :+
@@ -268,12 +267,24 @@ myTriangles = [ Triangle origin (Point2 400 10) (Point2 430 30) :+
 --------------------------------------------------------------------------------
 -- * Layout
 
+-- data DimSpec w = Absolute {-#UNPACK#-}!Double -- ^ in the range [0,1]
+--                |
 
-scaleWeights              :: Fractional w => [(w, a)] -> w -> [(w,a)]
+columns    :: [(Double,Color)]
+           -> Vector 2 Double
+           -> [Rectangle (Point 2 Double) :+ PathAttributes]
+columns ws (Vector2 screenWidth screenHeight) =
+  map (\(x,w,c) -> Rectangle (Point2 x 0) (Point2 (x+w) screenHeight) :+
+                   (def&pathColor .~ FillOnly c)
+      ) $ scaleWeights ws screenWidth
+
+
+-- | returns the (leftOffset, width, a) tuples
+scaleWeights              :: Fractional w => [(w, a)] -> w -> [(w,w,a)]
 scaleWeights xs available = let totalWeight = sum $ fst <$> xs
                             in snd $ List.mapAccumL (\left (fWidth,a) ->
                                                        let width = available * fWidth / totalWeight
-                                                       in (left + width, (left, a))
+                                                       in (left + width, (left, width, a))
                                                     ) 0 xs
 
 
@@ -294,8 +305,6 @@ byLength xss = scaleWeights (map (\xs -> (List.genericLength xs, xs)) xss)
 
 
 --------------------------------------------------------------------------------
-
--- cairoDraw _ _ =
 
 
 
@@ -319,6 +328,19 @@ byLength xss = scaleWeights (map (\xs -> (List.genericLength xs, xs)) xss)
 
 --------------------------------------------------------------------------------
 
+-- | Create a viewport whose world-space is \([-1,1] \times [-1,1]\) whose origin is in
+-- the center of the screen, i.e. the rectangle \([0,w] \times [0,h]\)), which is given
+-- by the input Vector w h
+normalizedCenteredOrigin       :: (Real r', Fractional r) => Vector 2 r' -> Viewport r
+normalizedCenteredOrigin dims' = let Vector2 w h = realToFrac <$> dims'
+                                     rect        = Rectangle origin (Point2 w h)
+                                     s           = Vector2 (w/2) ((-1)*h/2)
+                                 in mkViewport rect $ scaling s
+
+
+
+
+                                     -- (Point2 (realToFrac w) (realToFrac h))
 
 myDraw               :: MyModel -> View IO MyAction
 myDraw model texture =
@@ -333,9 +355,24 @@ myDraw model texture =
                               (Rectangle origin (Point2 w h))
                     disk (def&pathColor .~ FillOnly (opaque green))
                          (Disk p 4)
-                    renderIn (flipY $ Vector2 w h) $ do
-                      for_ myRectangles $ \(r :+ ats) -> rectangle ats r
-                      for_ myTriangles  $ \(r :+ ats) -> triangle ats r
+                    for_ (columns [ (1, opaque blue)
+                                  , (2, opaque red )
+                                  , (2, opaque orange)
+                                  ]
+                                  (realToFrac <$> Vector2 w h)
+                         ) $ \(r :+ ats) -> rectangle ats r
+
+                    -- let myViewport = normalizedCenteredOrigin (Vector2 w h)
+                    -- renderIn myViewport $ do
+                    --   for_ myRectangles $ \(r :+ ats) -> rectangle ats r
+
+
+                    -- renderIn (flipY $ Vector2 w h)
+
+
+                    -- --   $ do
+                    --   for_ myRectangles $ \(r :+ ats) -> rectangle ats r
+                      -- for_ myTriangles  $ \(r :+ ats) -> triangle ats r
 
 --------------------------------------------------------------------------------
 
@@ -348,5 +385,5 @@ main = runApp $
          , _liftSDLEvent    = withDefaultSDLEvents SDLEvent
          , _liftRenderEvent = RenderAction
          , _appRender       = myDraw
-         , _windowTitle     = "My SDL2MVC App"
+         , _settings        = def&windowTitle .~ "Demo"
          }

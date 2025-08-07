@@ -20,8 +20,10 @@ import           GHC.Natural
 import           Linear
 import qualified SDL
 import           SDL2MVC.Cairo
+import           SDL2MVC.Updated
 
 --------------------------------------------------------------------------------
+
 
 data Reaction m model action = Reaction model [m action]
 
@@ -34,8 +36,18 @@ infix <#
 model <# act = Reaction model [act]
 
 
-type Handler m model action = model -> action -> Reaction m model (LoopAction action)
+type Handler m model action = model -> action
+                            -> Reaction m model (LoopAction action)
 
+
+-- data WithStandardActions action = RenderAction Render
+--                                 | AppAction action
+
+-- withStandard                   :: Handler m model (action)
+
+-- withStandard handler app model = \case
+--   RenderAction renderAct -> handleRender app model renderAct
+--   AppAction act          -> handler model act
 
 --------------------------------------------------------------------------------
 -- * Actions used in SDLApp

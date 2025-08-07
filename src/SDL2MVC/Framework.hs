@@ -30,26 +30,25 @@ maxQueueSize = 1000
 --------------------------------------------------------------------------------
 
 -- | Main entrypoint. Runs an SDL2MV app given by the appConfig
-runApp :: Show action => AppConfig IO model action -> IO ()
+runApp :: Show msg => AppConfig IO model msg -> IO ()
 runApp = flip withSDLApp runApp'
 
 --------------------------------------------------------------------------------
 
 -- | Initialize the app
-withSDLApp          :: AppConfig m model action
+withSDLApp          :: AppConfig m model msg
                     -- ^ The configuration describing how to set up our application
-                    -> (App m model action -> IO ())
+                    -> (App m model msg -> IO ())
                     -- ^ the continuation; i.e. the actual application
                     -> IO ()
 withSDLApp appCfg k = do
   SDL.initializeAll
-  let windowCfg   = SDL.defaultWindow
-      rendererCfg = SDL.defaultRenderer { SDL.rendererType = SDL.SoftwareRenderer
+  let rendererCfg = SDL.defaultRenderer { SDL.rendererType = SDL.SoftwareRenderer
                                         }
                     -- to use the texture we need to use the softwarerenderer
   -- Initialize the window, renderer, and texture that we draw on
   runManaged $ do
-    window'   <- managed $ bracket (SDL.createWindow (appCfg^.windowTitle) windowCfg)
+    window'   <- managed $ bracket (SDL.createWindow (appCfg^.windowTitle) (appCfg^.windowConfig))
                                    SDL.destroyWindow
     renderer' <- managed $ bracket (SDL.createRenderer window' (-1) rendererCfg)
                                    SDL.destroyRenderer
@@ -71,7 +70,7 @@ withSDLApp appCfg k = do
 
 
 -- | Handles some of the default events, in particular closing the window and quitting
-withDefaultSDLEvents :: (SDL.Event -> action) -> SDL.Event -> LoopAction action
+withDefaultSDLEvents :: (SDL.Event -> msg) -> SDL.Event -> LoopAction msg
 withDefaultSDLEvents handle e = case SDL.eventPayload e of
   SDL.WindowClosedEvent _ -> Shutdown
   SDL.QuitEvent           -> Shutdown
@@ -88,9 +87,9 @@ interleaved xs ys = case xs of
 
 
 -- | Runs the app
-runApp'     :: forall model action.
-               Show action =>
-              App IO model action -> IO ()
+runApp'     :: forall model msg.
+               Show msg =>
+              App IO model msg -> IO ()
 runApp' app = go (app^.config.appModel)
   where
     queue        = app^.eventQueue
@@ -112,8 +111,21 @@ runApp' app = go (app^.config.appModel)
       e:evts -> case e of
         Shutdown     -> pure ()
         Continue act -> case handleAction app model act of
-          Reaction model' effs -> do scheduleAll effs  -- schedules additional actions
+          Reaction model' effs -> do scheduleAll effs  -- schedules additional msgs
                                      handleAll model' evts
 
-    scheduleAll :: [IO (LoopAction action)] -> IO ()
+    scheduleAll :: [IO (LoopAction msg)] -> IO ()
     scheduleAll = mapConcurrently_ (>>= atomically . Queue.writeTBQueue queue)
+
+
+data WithRenderAction msg = RenderAction Render
+                          | Act msg
+                          deriving (Show,Eq)
+
+
+-- withReRendering     :: Handler m model msg
+-- withReRendering app = \case
+--   Unchanged ->
+
+-- withRerendering :: App m model msg -> App m (Updated model) msg
+-- withRerendering app = app

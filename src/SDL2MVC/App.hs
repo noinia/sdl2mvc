@@ -1,8 +1,14 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE PatternSynonyms #-}
 module SDL2MVC.App
   ( AppConfig(..)
   , appModel, handler, startupAction, liftSDLEvent, liftRenderEvent, appRender
   , windowTitle
+
+  , AppSettings(..)
+  , HasAppSettings(..)
+
+  , Extended(Ex)
 
   , App(..)
   , config, windowRef, rendererRef, textureRef, eventQueue
@@ -12,7 +18,8 @@ module SDL2MVC.App
 
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
-import           Data.Text (Text)
+import           Data.Default.Class
+import           Data.Text (Text, pack)
 import qualified SDL
 import           SDL2MVC.Reaction
 
@@ -20,6 +27,19 @@ import           SDL2MVC.Reaction
 
 
 type View m action = SDL.Texture -> m action
+
+
+data Extended model where
+  -- ^ Extended hides the underlying app.
+  Extended :: App m model action -> Extended model
+
+-- | Pattern to match on the model
+pattern Ex       :: model -> Extended model
+pattern Ex model <- (getModel -> model)
+
+
+getModel                :: Extended model -> model
+getModel (Extended app) = _appModel . _config $ app
 
 
 
@@ -31,9 +51,25 @@ data AppConfig m model action =
             , _liftSDLEvent    :: SDL.Event -> LoopAction action
             , _liftRenderEvent :: Render -> action
             , _appRender       :: model -> View m action
-            , _windowTitle     :: Text
+            , _settings        :: !AppSettings
             }
 
+data AppSettings =
+  AppSettings { _windowTitle     :: !Text
+              , _windowConfig    :: !SDL.WindowConfig
+              }
+
+
+
+
+instance Default AppSettings where
+  def = AppSettings { _windowTitle = pack "SDL2MVC App"
+                    , _windowConfig = SDL.defaultWindow
+                                      { SDL.windowInitialSize = SDL.V2 1228 768
+                                      , SDL.windowHighDPI     = True
+                                      }
+                    }
+--------------------------------------------------------------------------------
 
 -- | A raw SDL2MVC App
 data App m model action =
@@ -48,4 +84,12 @@ data App m model action =
 
 makeLenses ''AppConfig
 
+makeClassy ''AppSettings
+
+
 makeLenses ''App
+
+
+
+instance HasAppSettings (AppConfig m model action) where
+  appSettings = settings
