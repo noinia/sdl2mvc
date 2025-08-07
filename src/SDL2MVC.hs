@@ -16,10 +16,10 @@ import           Data.Default.Class
 import           Data.Foldable (for_)
 import qualified Data.List as List
 import           Debug.Trace
-import           Effectful
+-- import           Effectful
 import           GHC.Natural
 import qualified GI.Cairo.Render as Cairo
-import qualified GI.Cairo.Render.Matrix as Cairo
+import qualified GI.Cairo.Render.Matrix as CairoM
 import           HGeometry.Ball
 import           HGeometry.Box
 import           HGeometry.Ext
@@ -38,6 +38,7 @@ import           SDL2MVC.Framework
 import           SDL2MVC.Reaction
 import           SDL2MVC.Render
 
+import           Data.Text (Text)
 --------------------------------------------------------------------------------
 -- * Model
 
@@ -184,13 +185,19 @@ instance Monoid PathAttributes where
 -- fillColor = id
 
 
+renderTextAt                  :: Real r => Point 2 r -> Text -> Cairo.Render ()
+renderTextAt (Point2 x y) txt = do Cairo.save
+                                   Cairo.translate (realToFrac x) (realToFrac y)
+                                   Cairo.showText txt
+                                   Cairo.restore
+
 toCairoMatrix   :: Real r => Matrix 3 3 r -> Cairo.Matrix
 toCairoMatrix m = case m&elements %~ realToFrac of
   Matrix (Vector3
           (Vector3 a b c)
           (Vector3 d e f)
           _
-         ) -> Cairo.Matrix a d b e c f
+         ) -> CairoM.Matrix a d b e c f
 
 renderIn           :: Real r => Viewport r -> Cairo.Render () -> Cairo.Render ()
 renderIn vp render = do
@@ -305,6 +312,125 @@ byLength xss = scaleWeights (map (\xs -> (List.genericLength xs, xs)) xss)
 
 
 --------------------------------------------------------------------------------
+-- * UI
+
+
+data ButtonAttributes msg = OnClick msg
+                          | Background' Color
+
+
+data SectionAttributes msg = SectionAttributes (Vector 2 Double) -- size
+                           | Background Color
+
+data UserInterface msg where
+  TextNode :: Text                                           -> UserInterface msg
+  Section  :: [SectionAttributes msg] -> [UserInterface msg] -> UserInterface msg
+  Button   :: [ButtonAttributes msg]  -> [UserInterface msg] -> UserInterface msg
+
+
+myUI   :: model -> UserInterface msg
+myUI _ = Section []
+                 [ Button []
+                          [TextNode "foo"]
+                 ]
+
+-- renderUI       :: model -> UserInterface msg -> Cairo.Render ()
+-- renderUI model = go
+--   where
+--     go = \case
+--       TextNode text   -> pure ()
+--       Section ats chs ->
+
+
+-- data Dynamic model a where
+--   Constant :: a           -> Dynamic model a
+--   Dynamic :: (model -> a) -> Dynamic model a
+
+-- instance Functor (Dynamic model) where
+--   fmap f = \case
+--     Constant x -> Constant (f x)
+--     Dynamic g  -> Dynamic (f . g)
+
+
+
+-- data UserInterface f msg where
+--   TextNode :: f Text                                                       -> UserInterface f msg
+--   Section  :: f [f (SectionAttributes msg)] -> f [f (UserInterface f msg)] -> UserInterface f msg
+--   Button   :: f [f (ButtonAttributes msg)]  -> f [f (UserInterface f msg)] -> UserInterface f msg
+
+
+
+-- mapF   :: forall f g msg.(Functor f)
+--        => (forall a. f a -> g a)
+--        -> UserInterface f msg -> UserInterface g msg
+-- mapF f = \case
+--   TextNode text   -> TextNode $ f text
+--   Section ats chs -> let ats' :: f [g (SectionAttributes msg)]
+--                          ats' = fmap (map f) ats
+--                          chs' :: f [g (UserInterface g msg)]
+--                          chs' = fmap (map (f . fmap (mapF f))) chs
+--                      in Section (f ats') (f chs')
+
+
+-- foo fh = traverse fh :: [f SecA] -> h [g b]
+-- bar fh = fh . fmap (traverse fh) :: h (h [g b])
+
+--   _           :: f (h [g b])
+
+
+-- traverseF    :: (Applicative h, Applicative f)
+--              => (forall a. f a -> h (g a))
+--              -> UserInterface f msg -> h (UserInterface g msg)
+-- traverseF fh = \case
+--   TextNode fText    -> TextNode <$> fg fText
+--   Section fAts fChs -> Section <$> hgAts <*> hgChs
+--     where
+--       hgAts = fg
+--             . fmap (\fSAts -> fmap fg
+
+--                    )
+--       ats
+
+    -- fg (
+
+    --                       )
+
+
+
+  -- ats chs -> let ats' :: f [g (SectionAttributes msg)]
+  --                        ats' = fmap (map f) ats
+  --                        chs' :: f [g (UserInterface g msg)]
+  --                        chs' = fmap (map (f . fmap (mapF f))) chs
+  --                    in Section f ats') (f chs')
+
+-- traverseAts :: (forall a. f a -> h (g a)) -> f (SectionAttributes msg)
+
+
+
+
+data MyModel2 = MyModel2 { theText :: Text
+                         , theInt  :: Int
+                         }
+
+-- myUI :: UserInterface (Dynamic MyModel2) msg
+-- myUI = Section (Constant [])
+--                (Constant [ Constant $ TextNode (Constant "foo")
+--                          , Constant $ TextNode (Dynamic theText)
+--                          ]
+--                )
+
+-- renderText :: model -> Dynamic model Text -> Cairo.Render ()
+-- renderText = undefined
+
+-- renderUI          :: model -> UserInterface (Dynamic model) msg -> Cairo.Render ()
+-- renderUI theModel = \case
+--   TextNode text -> renderText
+
+
+-- myUI model = Section [Const $ SectionAttributes (Vector2 10 20)]
+--                      [
+
+--                      ]
 
 
 
@@ -351,6 +477,7 @@ myDraw model texture =
     Nothing -> print "cursor outside screen"
     Just p  -> do SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
                   withCairoTexture texture $ do
+                    Cairo.setFontSize 20
                     rectangle (def&pathColor .~ FillOnly (opaque white))
                               (Rectangle origin (Point2 w h))
                     disk (def&pathColor .~ FillOnly (opaque green))
@@ -361,6 +488,7 @@ myDraw model texture =
                                   ]
                                   (realToFrac <$> Vector2 w h)
                          ) $ \(r :+ ats) -> rectangle ats r
+                    renderTextAt (Point2 100 200) "foo"
 
                     -- let myViewport = normalizedCenteredOrigin (Vector2 w h)
                     -- renderIn myViewport $ do
