@@ -7,13 +7,17 @@ module SDL2MVC.Framework
   ) where
 
 
-import           Control.Concurrent.Async (mapConcurrently_, withAsync, uninterruptibleCancel)
-import           Control.Concurrent.STM (atomically)
+import qualified Control.Concurrent.STM as STM
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Exception (bracket)
 import           Control.Lens
 import           Control.Monad.Managed
 import           Data.Maybe (maybeToList)
+import           Effectful
+import           Effectful.Concurrent
+import           Effectful.Concurrent.Async (mapConcurrently_)
+import           Effectful.Concurrent.STM
+import           Effectful.Resource
 import           GHC.Natural
 import qualified SDL
 import           SDL2MVC.App
@@ -30,43 +34,47 @@ maxQueueSize = 1000
 --------------------------------------------------------------------------------
 
 -- | Main entrypoint. Runs an SDL2MV app given by the appConfig
-runApp :: Show msg => AppConfig IO model msg -> IO ()
+runApp :: IOE :> es
+       => AppConfig (Resource : Concurrent : es) model msg -> Eff es ()
 runApp = flip withSDLApp runApp'
 
 --------------------------------------------------------------------------------
 
 -- | Initialize the app
-withSDLApp          :: AppConfig m model msg
+withSDLApp          :: ( IOE :> es
+                       )
+                    => AppConfig (Resource : Concurrent : es) model msg
                     -- ^ The configuration describing how to set up our application
-                    -> (App m model msg -> IO ())
+                    -> (App (Resource : Concurrent : es) model msg ->
+                         Eff (Resource : Concurrent  : es) ())
                     -- ^ the continuation; i.e. the actual application
-                    -> IO ()
-withSDLApp appCfg k = do
-  SDL.initializeAll
+                    -> Eff es ()
+withSDLApp appCfg withApp = do
+  liftIO $ SDL.initializeAll
   let rendererCfg = SDL.defaultRenderer { SDL.rendererType = SDL.SoftwareRenderer
                                         }
                     -- to use the texture we need to use the softwarerenderer
   -- Initialize the window, renderer, and texture that we draw on
-  runManaged $ do
-    window'   <- managed $ bracket (SDL.createWindow (appCfg^.windowTitle) (appCfg^.windowConfig))
-                                   SDL.destroyWindow
-    renderer' <- managed $ bracket (SDL.createRenderer window' (-1) rendererCfg)
-                                   SDL.destroyRenderer
-    texture'  <- managed $ bracket (createCairoTexture' renderer' window')
-                                   SDL.destroyTexture
+  runConcurrent . runResource $ do
+    window'   <- manage (SDL.createWindow (appCfg^.windowTitle) (appCfg^.windowConfig))
+                        SDL.destroyWindow
+    renderer' <- manage (SDL.createRenderer window' (-1) rendererCfg)
+                        SDL.destroyRenderer
+    texture'  <- manage (createCairoTexture' renderer' window')
+                        SDL.destroyTexture
     -- initialize the event queue
     let initialActions = maybeToList (Continue <$> appCfg^.startupAction)
-    queue  <- liftIO . atomically $ do q <- Queue.newTBQueue maxQueueSize
-                                       mapM_ (Queue.writeTBQueue q) initialActions
-                                       pure q
+    queue  <- atomically $ do q <- newTBQueue maxQueueSize
+                              mapM_ (writeTBQueue q) initialActions
+                              pure q
 
     -- run the actuall application
-    liftIO . k $ App { _config      = appCfg
-                     , _windowRef   = window'
-                     , _rendererRef = renderer'
-                     , _textureRef  = texture'
-                     , _eventQueue  = queue
-                     }
+    withApp $ App { _config      = appCfg
+                  , _windowRef   = window'
+                  , _rendererRef = renderer'
+                  , _textureRef  = texture'
+                  , _eventQueue  = queue
+                  }
 
 
 -- | Handles some of the default events, in particular closing the window and quitting
@@ -87,9 +95,9 @@ interleaved xs ys = case xs of
 
 
 -- | Runs the app
-runApp'     :: forall model msg.
-               Show msg =>
-              App IO model msg -> IO ()
+runApp'     :: forall os model msg.
+               (IOE :> os, Concurrent :> os)
+            => App os model msg -> Eff os ()
 runApp' app = go (app^.config.appModel)
   where
     queue        = app^.eventQueue
@@ -100,12 +108,13 @@ runApp' app = go (app^.config.appModel)
     -- all events, we continue the loop.
     --
     -- we interleave the events to prevent starvation.
-    go   :: model -> IO ()
-    go m = do sdlEvents <- fmap (app^.config.liftSDLEvent) <$> SDL.pollEvents
-              appEvents <- atomically $ Queue.flushTBQueue queue
+    go   :: model -> Eff os ()
+    go m = do sdlEvents <- fmap (app^.config.liftSDLEvent) <$> liftIO SDL.pollEvents
+              appEvents <- atomically $ flushTBQueue queue
               handleAll m $ interleaved sdlEvents appEvents
     -- | handleAll does the actual event handling, whereas the go function collects the
     -- events to run.
+    handleAll       :: model -> [LoopAction msg] -> Eff os ()
     handleAll model = \case
       []     -> go model
       e:evts -> case e of
@@ -114,8 +123,10 @@ runApp' app = go (app^.config.appModel)
           Reaction model' effs -> do scheduleAll effs  -- schedules additional msgs
                                      handleAll model' evts
 
-    scheduleAll :: [IO (LoopAction msg)] -> IO ()
-    scheduleAll = mapConcurrently_ (>>= atomically . Queue.writeTBQueue queue)
+    scheduleAll :: [Eff os (LoopAction msg)] -> Eff os ()
+    scheduleAll = mapConcurrently_ (\act -> do msg <- act
+                                               atomically . writeTBQueue queue $ msg
+                                   )
 
 
 data WithRenderAction msg = RenderAction Render

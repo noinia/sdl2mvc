@@ -13,6 +13,8 @@ allow-newer:
     geojson:text,
     geojson:containers,
     sdl2:bytestring,
+    resource-effectful:effectful,
+    resource-effectful:effectful-core,
 
 -- allow-newer:
 --   cairo:text,Cabal,

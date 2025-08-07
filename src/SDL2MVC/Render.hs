@@ -12,9 +12,9 @@ import           SDL2MVC.Reaction
 
 
 -- | Handles a render action
-handleRender           :: MonadIO m
-                       => App m model action -> model -> Render
-                       -> Reaction m model (LoopAction action)
+handleRender           :: IOE :> es
+                       => App es model action -> model -> Render
+                       -> Reaction (Eff es) model (LoopAction action)
 handleRender app model = \case
     Render -> model <# do let renderer = app^.rendererRef
                               texture  = app^.textureRef
@@ -23,8 +23,8 @@ handleRender app model = \case
                           -- now render
                           act <- (app^.config.appRender) model texture
                           -- display the drawing
-                          SDL.copy renderer texture Nothing Nothing
-                          SDL.present renderer
+                          liftIO $ SDL.copy renderer texture Nothing Nothing
+                          liftIO $ SDL.present renderer
                           pure $ Continue act
 
 

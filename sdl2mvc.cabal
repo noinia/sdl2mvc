@@ -35,6 +35,7 @@ common setup
         , lens                    >= 5            && < 5.4
         , linear                  >= 1.20         && < 1.24
         , effectful               >= 2.4          && < 2.5
+        , resource-effectful      >= 0.1          && < 0.2
         , text                    >= 2.1          && < 2.2
 
     default-language: GHC2024
@@ -66,6 +67,7 @@ library
         SDL2MVC.Render
         SDL2MVC.Framework
         SDL2MVC.Updated
+        SDL2MVC.Send
 
     -- other-modules:
     -- other-extensions:
@@ -82,16 +84,17 @@ executable sdl2mvc
     hs-source-dirs:   app
     default-language: GHC2024
 
-executable debugger
-    import:           setup
-    main-is:          Debugger.hs
-    -- other-modules:
-    -- other-extensions:
-    build-depends:
-        sdl2mvc
 
-    hs-source-dirs:   app
-    default-language: GHC2024
+-- executable debugger
+--     import:           setup
+--     main-is:          Debugger.hs
+--     -- other-modules:
+--     -- other-extensions:
+--     build-depends:
+--         sdl2mvc
+
+--     hs-source-dirs:   app
+--     default-language: GHC2024
 
 
 test-suite sdl2mvc-test

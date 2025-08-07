@@ -22,16 +22,17 @@ import           Data.Default.Class
 import           Data.Text (Text, pack)
 import qualified SDL
 import           SDL2MVC.Reaction
+import           Effectful
 
 --------------------------------------------------------------------------------
 
 
-type View m action = SDL.Texture -> m action
+type View (es :: [Effect]) msg = SDL.Texture -> Eff es msg
 
 
 data Extended model where
   -- ^ Extended hides the underlying app.
-  Extended :: App m model action -> Extended model
+  Extended :: App es model action -> Extended model
 
 -- | Pattern to match on the model
 pattern Ex       :: model -> Extended model
@@ -44,13 +45,13 @@ getModel (Extended app) = _appModel . _config $ app
 
 
 -- |  Configuration data for the App
-data AppConfig m model action =
+data AppConfig (es :: [Effect]) model action =
   AppConfig { _appModel        :: model
-            , _handler         :: App m model action -> Handler m model action
+            , _handler         :: App es model action -> Handler (Eff es) model action
             , _startupAction   :: Maybe action
             , _liftSDLEvent    :: SDL.Event -> LoopAction action
             , _liftRenderEvent :: Render -> action
-            , _appRender       :: model -> View m action
+            , _appRender       :: model -> View es action
             , _settings        :: !AppSettings
             }
 
@@ -72,8 +73,8 @@ instance Default AppSettings where
 --------------------------------------------------------------------------------
 
 -- | A raw SDL2MVC App
-data App m model action =
-     App { _config          :: AppConfig m model action
+data App es model action =
+     App { _config          :: AppConfig es model action
          , _windowRef       :: SDL.Window
          , _rendererRef     :: SDL.Renderer
          , _textureRef      :: SDL.Texture
@@ -91,5 +92,5 @@ makeLenses ''App
 
 
 
-instance HasAppSettings (AppConfig m model action) where
+instance HasAppSettings (AppConfig es model action) where
   appSettings = settings

@@ -16,7 +16,7 @@ import           Data.Default.Class
 import           Data.Foldable (for_)
 import qualified Data.List as List
 import           Debug.Trace
--- import           Effectful
+import           Effectful
 import           GHC.Natural
 import qualified GI.Cairo.Render as Cairo
 import qualified GI.Cairo.Render.Matrix as CairoM
@@ -468,15 +468,15 @@ normalizedCenteredOrigin dims' = let Vector2 w h = realToFrac <$> dims'
 
                                      -- (Point2 (realToFrac w) (realToFrac h))
 
-myDraw               :: MyModel -> View IO MyAction
+myDraw               :: IOE :> es => MyModel -> View es MyAction
 myDraw model texture =
   -- do
   --   renderDiagramTo texture $ diagramDraw model
   --   pure Skip
   Skip <$ case fmap fromIntegral <$> model^.mousePosition of
-    Nothing -> print "cursor outside screen"
+    Nothing -> liftIO $ print "cursor outside screen"
     Just p  -> do SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
-                  withCairoTexture texture $ do
+                  liftIO $ withCairoTexture texture $ do
                     Cairo.setFontSize 20
                     rectangle (def&pathColor .~ FillOnly (opaque white))
                               (Rectangle origin (Point2 w h))
@@ -505,7 +505,7 @@ myDraw model texture =
 --------------------------------------------------------------------------------
 
 main :: IO ()
-main = runApp $
+main = runEff . runApp $
        AppConfig
          { _appModel        = defaultModel
          , _handler         = myHandler
