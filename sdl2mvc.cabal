@@ -23,6 +23,7 @@ common setup
         -- , diagrams-gi-cairo       >= 1.4.2
         -- , diagrams-core           >= 1.5.1
         -- , diagrams-lib            >= 1.4.6.2
+        , data-default-class      >= 0.2          && < 0.3
         , colour                  >= 2.3.6        && < 2.4
         , managed                 >= 1.0.10       && < 1.1
         , hgeometry-combinatorial >= 1.0          && < 1.1
