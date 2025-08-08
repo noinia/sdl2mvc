@@ -15,6 +15,8 @@ module SDL2MVC.App
 
   , View
   , Vary.Vary
+
+  , RenderTarget(RenderTarget), targetTexture, target
   ) where
 
 import qualified Control.Concurrent.STM.TBQueue as Queue
@@ -23,17 +25,26 @@ import           Data.Default.Class
 import           Data.Kind (Type)
 import           Data.Text (Text, pack)
 import           Effectful
+import           HGeometry.Viewport
 import qualified SDL
 import           SDL2MVC.Reaction
 import           SDL2MVC.Send
 import           SDL2MVC.Updated
 import qualified Vary
-
+import qualified GI.Cairo.Render as Cairo
 
 --------------------------------------------------------------------------------
 
 
-type View (es :: [Effect]) (msgs :: [Type]) = SDL.Texture -> Eff es ()
+
+data RenderTarget = RenderTarget { _targetTexture  :: SDL.Texture
+                                 , _target         :: Viewport Double
+                                 }
+
+makeLenses ''RenderTarget
+
+
+type View (es :: [Effect]) (msgs :: [Type]) = RenderTarget -> Cairo.Render () -- Eff es ()
 
 
 data Extended model where
@@ -72,7 +83,9 @@ instance Default AppSettings where
   def = AppSettings { _windowTitle = pack "SDL2MVC App"
                     , _windowConfig = SDL.defaultWindow
                                       { SDL.windowInitialSize = SDL.V2 1228 768
-                                      , SDL.windowHighDPI     = True
+                                      , SDL.windowHighDPI     = False -- True
+                                        -- TODO: enabling this somehow creates some weird
+                                        -- scaling effect
                                       }
                     }
 --------------------------------------------------------------------------------

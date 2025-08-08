@@ -38,9 +38,9 @@ import           SDL2MVC.Framework
 import           SDL2MVC.Reaction
 import           SDL2MVC.Render
 import           SDL2MVC.Send
+import           SDL2MVC.Drawing
 import           SDL2MVC.Updated
 import qualified Vary
-
 import           Data.Text (Text)
 --------------------------------------------------------------------------------
 -- * Model
@@ -73,12 +73,22 @@ toEither v = v&( Vary.on @l Left
                $ Vary.exhaustiveCase
                )
 
-myHandler           :: MyModel -> Vary '[SDL.Event, MyAction] -> Eff es (Updated MyModel)
+-- myHandler          -- :: -- MyModel -> Vary '[SDL.Event, MyAction] -> Eff es (Updated MyModel)
+
+myHandler           :: forall es inMsgs outMsgs.
+                       ( inMsgs ~ [SDL.Event, MyAction]
+                       , outMsgs ~ (Shutdown : Render : inMsgs)
+                       , Send outMsgs :> es
+                       )
+                    => Handler es MyModel outMsgs inMsgs
 myHandler model msg = case toEither msg of
   Left e -> case SDL.eventPayload e of
               SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
 
                                                 in pure $ Changed (model&mousePosition ?~ p)
+
+              SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
+              SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
               _                              -> pure Unchanged
   Right Skip -> pure Unchanged
 
@@ -135,166 +145,12 @@ toolBarWidth = 16
 
 
 
---------------------------------------------------------------------------------
-
-type Color = Colour.AlphaColour Double
-
-data Stroke = Stroke { _strokeWidth :: {-#UNPACK#-}!Double
-                     , _strokeColor :: !Color
-                     }
-            deriving (Show,Eq)
-
-makeLenses ''Stroke
-
-instance Default Stroke where
-  def = Stroke 1 (opaque Colour.black)
-
--- | Paths must have stroke, fill, or both
-data StrokeAndFillSpec =
-    StrokeOnly  {-# UNPACK #-}!Stroke
-  | FillOnly    {-# UNPACK #-}!Color
-  | StrokeAndFill  {-# UNPACK #-}!Stroke -- ^ stroke spec
-                   {-# UNPACK #-}!Color -- ^ fill color
-    deriving stock (Show,Eq)
-
-instance Default StrokeAndFillSpec where
-  def = StrokeOnly def
-
--- | Lens to access the Stroke of a StrokeAndFill. This may set the stroke.
-_Stroke :: Lens' StrokeAndFillSpec (Maybe Stroke)
-_Stroke = lens (\case
-                   StrokeOnly s      -> Just s
-                   StrokeAndFill s _ -> Just s
-                   _                 -> Nothing
-               )
-               (\spec -> \case
-                   Nothing -> case spec of
-                                StrokeAndFill _ f -> FillOnly f
-                                _                 -> spec -- impossible to delete stroke
-                   Just s  -> case spec of
-                                StrokeOnly _      -> StrokeOnly s
-                                StrokeAndFill _ f -> StrokeAndFill s f
-                                FillOnly f        -> StrokeAndFill s f
-               )
-
--- | Lens to access the fill color of a StrokeAndFill. This may set the stroke and fill
-_Fill :: Lens' StrokeAndFillSpec (Maybe Color)
-_Fill = lens (\case
-                 FillOnly f        -> Just f
-                 StrokeAndFill _ f -> Just f
-                 _                 -> Nothing
-             )
-             (\spec -> \case
-                 Nothing -> case spec of
-                              StrokeAndFill s _ -> StrokeOnly s
-                              _                 -> spec -- impossible to delete fill
-                 Just f  -> case spec of
-                              StrokeOnly s      -> StrokeAndFill s f
-                              FillOnly _        -> FillOnly f
-                              StrokeAndFill s _ -> StrokeAndFill s f
-             )
-
-
-
-data PathAttributes = PathAttributes { _strokeAndFill :: {-# UNPACK #-} !StrokeAndFillSpec
-                                     }
-  deriving stock (Show,Eq)
-
-pathColor :: Lens' PathAttributes StrokeAndFillSpec
-pathColor = lens _strokeAndFill (\ats c -> ats { _strokeAndFill = c} )
-
-instance Default PathAttributes where
-  def = PathAttributes def
-
-instance Semigroup PathAttributes where
-  -- ^ Later options may overwrite former ones.
-  (PathAttributes c) <> (PathAttributes c') = PathAttributes c'
-
-instance Monoid PathAttributes where
-  mempty = def
-
 
 
 --------------------------------------------------------------------------------
 -- type Attributes = AlphaColour Double
 -- fillColor = id
 
-
-renderTextAt                  :: Real r => Point 2 r -> Text -> Cairo.Render ()
-renderTextAt (Point2 x y) txt = do Cairo.save
-                                   Cairo.translate (realToFrac x) (realToFrac y)
-                                   Cairo.showText txt
-                                   Cairo.restore
-
-toCairoMatrix   :: Real r => Matrix 3 3 r -> Cairo.Matrix
-toCairoMatrix m = case m&elements %~ realToFrac of
-  Matrix (Vector3
-          (Vector3 a b c)
-          (Vector3 d e f)
-          _
-         ) -> CairoM.Matrix a d b e c f
-
-renderIn           :: Real r => Viewport r -> Cairo.Render () -> Cairo.Render ()
-renderIn vp render = do
-                        Cairo.save
-                        Cairo.transform (vp^.worldToHost.transformationMatrix.to toCairoMatrix)
-                        render
-                        Cairo.restore
-
-
-setStroke s = do Cairo.setLineWidth $ s^.strokeWidth
-                 setColor $ s^.strokeColor
-
-
-withStrokeAndFill                 :: StrokeAndFillSpec -> Cairo.Render () -> Cairo.Render ()
-withStrokeAndFill spec renderPath = case spec of
-  StrokeOnly s      -> do setStroke s
-                          renderPath
-                          Cairo.stroke
-  FillOnly f        -> do setColor f
-                          renderPath
-                          Cairo.fill
-  StrokeAndFill s f -> do setColor f
-                          renderPath
-                          Cairo.fillPreserve
-                          setStroke s
-                          renderPath
-                          Cairo.stroke
-
-disk          :: (Point_ point 2 r, Real r)
-              => PathAttributes -> Disk point -> Cairo.Render ()
-disk ats disk = withStrokeAndFill (ats^.pathColor) $ do
-                   let Point2 x y = disk^.center.asPoint
-                                    & coordinates %~ realToFrac
-                       r          = realToFrac $ disk^.squaredRadius
-                   Cairo.arc x y (sqrt r) 0 (2*pi)
-
-toRGBA col = ( toSRGB $ col `Data.Colour.over` black
-             , alphaChannel col
-             )
-
-setColor col = let (RGB r g b, a) = toRGBA col
-               in Cairo.setSourceRGBA r g b a
-
-rectangle          :: (Point_ point 2 r, Real r)
-                   => PathAttributes -> Rectangle point -> Cairo.Render ()
-rectangle ats rect = withStrokeAndFill (ats^.pathColor) $ do
-                        let Point2 x y  = rect^.minPoint.asPoint
-                                          & coordinates %~ realToFrac
-                            Vector2 w h = realToFrac <$> size rect
-                        Cairo.rectangle x y w h
-
-triangle         :: (Point_ point 2 r, Real r)
-                 => PathAttributes -> Triangle point -> Cairo.Render ()
-triangle ats tri = withStrokeAndFill (ats^.pathColor) $ do
-                      let Triangle a b c = toPoints tri
-                      Cairo.moveTo (a^.xCoord) (a^.yCoord)
-                      Cairo.lineTo (b^.xCoord) (b^.yCoord)
-                      Cairo.lineTo (c^.xCoord) (c^.yCoord)
-                      Cairo.closePath
-
-toPoints :: (Functor f, Point_ point 2 r, Real r) => f point -> f (Point 2 Double)
-toPoints = fmap (\p -> p^.asPoint &coordinates %~ realToFrac)
 
 
 myRectangles =
@@ -503,39 +359,30 @@ normalizedCenteredOrigin dims' = let Vector2 w h = realToFrac <$> dims'
 
                                      -- (Point2 (realToFrac w) (realToFrac h))
 
-myDraw               :: IOE :> es => MyModel -> View es msgs
-myDraw model texture =
-  -- do
-  --   renderDiagramTo texture $ diagramDraw model
-  --   pure Skip
-  case fmap fromIntegral <$> model^.mousePosition of
+myDraw              :: MyModel -> View es msgs
+myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: Point 2 Double))
+                           <$> model^.mousePosition of
     Nothing -> liftIO $ print "cursor outside screen"
-    Just p  -> do SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
-                  liftIO $ withCairoTexture texture $ do
-                    Cairo.setFontSize 20
-                    rectangle (def&pathColor .~ FillOnly (opaque white))
-                              (Rectangle origin (Point2 w h))
-                    disk (def&pathColor .~ FillOnly (opaque green))
-                         (Disk p 4)
-                    for_ (columns [ (1, opaque blue)
-                                  , (2, opaque red )
-                                  , (2, opaque orange)
-                                  ]
-                                  (realToFrac <$> Vector2 w h)
-                         ) $ \(r :+ ats) -> rectangle ats r
-                    renderTextAt (Point2 100 200) "foo"
-
-                    -- let myViewport = normalizedCenteredOrigin (Vector2 w h)
-                    -- renderIn myViewport $ do
-                    --   for_ myRectangles $ \(r :+ ats) -> rectangle ats r
+    Just p  -> do renderDrawingIn (screen^.target)
+                    [ draw $ Blank (opaque white)
+                    , draw $ Disk p 4 :+ (def&pathColor .~ FillOnly (opaque green))
+                    , draw $ TextLabel "foo" :+ (def&location .~ Point2 100 100)
+                    ]
 
 
-                    -- renderIn (flipY $ Vector2 w h)
+      -- Cairo.setFontSize 20
+      --             rectangle (def&pathColor .~ FillOnly (opaque white))
+      --                       (screen^.target.viewPort)
 
-
-                    -- --   $ do
-                    --   for_ myRectangles $ \(r :+ ats) -> rectangle ats r
-                      -- for_ myTriangles  $ \(r :+ ats) -> triangle ats r
+      --             disk (def&pathColor .~ FillOnly (opaque green))
+      --                    (Disk p 4)
+      --             for_ (columns [ (1, opaque blue)
+      --                           , (2, opaque red )
+      --                           , (2, opaque orange)
+      --                           ]
+      --                           (size (screen^.target.viewPort))
+      --                  ) $ \(r :+ ats) -> rectangle ats r
+      --             renderTextAt (Point2 100 200) "foo"
 
 --------------------------------------------------------------------------------
 

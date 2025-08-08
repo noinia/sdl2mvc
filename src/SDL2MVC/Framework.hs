@@ -12,6 +12,7 @@ import qualified Control.Concurrent.STM as STM
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Exception (bracket)
 import           Control.Lens
+import           Control.Monad (when)
 import           Data.Maybe (maybeToList)
 import           Effectful
 import           Effectful.Concurrent
@@ -95,8 +96,8 @@ withDefaultSDLEvents         :: forall msgs inMsgs es model.
                                 , Shutdown :| msgs
                                 , SDL.Event :| inMsgs
                                 )
-                             => Handler es model inMsgs
-                             -> Handler es model inMsgs
+                             => Handler es model msgs inMsgs
+                             -> Handler es model msgs inMsgs
 withDefaultSDLEvents handler = \model msg -> case Vary.into @SDL.Event msg of
     Just e  -> case SDL.eventPayload e of
                  SDL.WindowClosedEvent _ -> Unchanged <$ sendMsg @msgs Shutdown
@@ -139,7 +140,9 @@ runApp' app = runSendWith queue $ go (app^.config.appModel)
     --
     -- we interleave the events to prevent starvation.
     go   :: model -> Eff es ()
-    go m = do sdlEvents <- fmap Vary.from <$> liftIO SDL.pollEvents
+    go m = do sdlEvents' <- liftIO SDL.pollEvents
+              when (not $ null sdlEvents') $ liftIO (print sdlEvents')
+              let sdlEvents = fmap Vary.from $ sdlEvents'
               appEvents <- atomically $ flushTBQueue queue
               handleAll m $ interleaved sdlEvents appEvents
     -- | handleAll does the actual event handling, whereas the go function collects the
