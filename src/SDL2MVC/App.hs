@@ -2,7 +2,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 module SDL2MVC.App
   ( AppConfig(..)
-  , appModel, handler, startupAction, liftSDLEvent, liftRenderEvent, appRender
+  , appModel, handler, initialMessages, appRender
   , windowTitle
 
   , AppSettings(..)
@@ -14,26 +14,31 @@ module SDL2MVC.App
   , config, windowRef, rendererRef, textureRef, eventQueue
 
   , View
+  , Vary.Vary
   ) where
 
 import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens
 import           Data.Default.Class
+import           Data.Kind (Type)
 import           Data.Text (Text, pack)
+import           Effectful
 import qualified SDL
 import           SDL2MVC.Reaction
 import           SDL2MVC.Send
-import           Effectful
+import           SDL2MVC.Updated
+import qualified Vary
+
 
 --------------------------------------------------------------------------------
 
 
-type View (es :: [Effect]) msg = SDL.Texture -> Eff es ()
+type View (es :: [Effect]) (msgs :: [Type]) = SDL.Texture -> Eff es ()
 
 
 data Extended model where
   -- ^ Extended hides the underlying app.
-  Extended :: App es model action -> Extended model
+  Extended :: App es model msgs inMsgs -> Extended model
 
 -- | Pattern to match on the model
 pattern Ex       :: model -> Extended model
@@ -46,13 +51,12 @@ getModel (Extended app) = _appModel . _config $ app
 
 
 -- |  Configuration data for the App
-data AppConfig (es :: [Effect]) model action =
+data AppConfig (es :: [Effect]) model (msgs :: [Type]) (inMsgs :: [Type]) =
   AppConfig { _appModel        :: model
-            , _handler         :: App es model action -> Handler es model action
-            , _startupAction   :: Maybe action
-            , _liftSDLEvent    :: SDL.Event -> LoopAction action
-            , _liftRenderEvent :: Render -> action
-            , _appRender       :: model -> View es action
+            , _handler         :: App es model msgs inMsgs
+                               -> model -> Vary.Vary inMsgs -> Eff es (Updated model)
+            , _initialMessages :: [Vary.Vary msgs]
+            , _appRender       :: model -> View es msgs
             , _settings        :: !AppSettings
             }
 
@@ -74,12 +78,12 @@ instance Default AppSettings where
 --------------------------------------------------------------------------------
 
 -- | A raw SDL2MVC App
-data App es model action =
-     App { _config          :: AppConfig es model action
+data App es model msgs inMsgs =
+     App { _config          :: AppConfig es model msgs inMsgs
          , _windowRef       :: SDL.Window
          , _rendererRef     :: SDL.Renderer
          , _textureRef      :: SDL.Texture
-         , _eventQueue      :: Queue.TBQueue (LoopAction action)
+         , _eventQueue      :: Queue.TBQueue (Vary.Vary msgs)
           -- ^ the event queue we are using
          }
 
@@ -93,5 +97,5 @@ makeLenses ''App
 
 
 
-instance HasAppSettings (AppConfig es model action) where
+instance HasAppSettings (AppConfig es model msgs inMsgs) where
   appSettings = settings

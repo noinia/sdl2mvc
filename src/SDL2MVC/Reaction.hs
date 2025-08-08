@@ -5,7 +5,8 @@ module SDL2MVC.Reaction
 
   , Handler
 
-  , LoopAction(..)
+  , Shutdown(..)
+  -- , LoopAction(..)
   , Render(..)
   ) where
 --------------------------------------------------------------------------------
@@ -21,7 +22,7 @@ import           Linear
 import qualified SDL
 import           SDL2MVC.Cairo
 import           SDL2MVC.Updated
-
+import qualified Vary
 --------------------------------------------------------------------------------
 
 
@@ -36,7 +37,7 @@ infix <#
 model <# act = Reaction model [act]
 
 
-type Handler es model action = model -> action -> Eff es (Updated model)
+type Handler es model msgs = model -> Vary.Vary msgs -> Eff es (Updated model)
 
 -- Reaction m model (LoopAction action)
 
@@ -53,9 +54,10 @@ type Handler es model action = model -> action -> Eff es (Updated model)
 --------------------------------------------------------------------------------
 -- * Actions used in SDLApp
 
-data LoopAction action = Shutdown
-                       | Continue action
-                       deriving (Show,Eq)
+data Shutdown = Shutdown
+-- data LoopAction action = Shutdown
+--                        | Continue action
+--                        deriving (Show,Eq)
 
 data Render = Render
   deriving (Show,Eq)

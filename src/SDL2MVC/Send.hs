@@ -1,28 +1,40 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 module SDL2MVC.Send
   ( Send
+  , sendMsg
+  , SendMessage
   , sendMessage
   , runSendWith
   ) where
 
+import           Data.Kind (Type)
 import           Effectful
 import           Effectful.Concurrent.STM
 import           Effectful.Dispatch.Dynamic
 import qualified Effectful.Dispatch.Dynamic as Eff
+import qualified Vary
 
 --------------------------------------------------------------------------------
 
-data Send msg :: Effect where
-  SendMessage :: msg -> Send msg m ()
+type Send (msgs :: [Type]) = SendMessage (Vary.Vary msgs)
 
-type instance DispatchOf (Send msg) = Dynamic
+data SendMessage msg :: Effect where
+  SendMessage :: msg -> SendMessage msg m ()
 
-sendMessage :: (Send msg :> es, HasCallStack) => msg -> Eff es ()
+type instance DispatchOf (SendMessage msg) = Dynamic
+
+-- | Send a message
+sendMsg :: forall msgs msg es. (msg Vary.:| msgs, Send msgs :> es, HasCallStack) => msg -> Eff es ()
+sendMsg = sendMessage . Vary.from @msg @msgs
+
+-- | Send message
+sendMessage :: (SendMessage msg :> es, HasCallStack) => msg -> Eff es ()
 sendMessage = Eff.send . SendMessage
 
 -- | A way of implementing send
 runSendWith       :: Concurrent :> es
-                  => TBQueue msg -> Eff (Send msg : es) a -> Eff es a
+                  => TBQueue msg -> Eff (SendMessage msg : es) a -> Eff es a
 runSendWith queue = interpret $ \_ -> \case
     SendMessage msg -> atomically $ writeTBQueue queue msg
 -- I want this to be pretty mcuh the only way of implemething send?

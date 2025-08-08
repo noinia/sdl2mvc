@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 module SDL2MVC.Framework
   ( runApp
   , withSDLApp
   , runApp'
   , withDefaultSDLEvents
-  , Send'
   ) where
 
 
@@ -22,10 +22,13 @@ import           GHC.Natural
 import qualified SDL
 import           SDL2MVC.App
 import           SDL2MVC.Cairo
+import           SDL2MVC.Reaction
 import           SDL2MVC.Render
 import           SDL2MVC.Send
 import           SDL2MVC.Updated
-import           SDL2MVC.Reaction
+import qualified Vary
+import           Vary ((:|))
+import qualified Vary.Utils as Vary
 
 import           Debug.Trace
 --------------------------------------------------------------------------------
@@ -37,22 +40,26 @@ maxQueueSize = 1000
 --------------------------------------------------------------------------------
 
 -- | Main entrypoint. Runs an SDL2MV app given by the appConfig
-runApp :: ( es ~ Send' msg : Resource : Concurrent : os
+runApp :: ( es ~ Send msgs : Resource : Concurrent : os
           , IOE :> os
+
+
+          , msgs   ~ (Shutdown : inMsgs)
+          , inMsgs ~ (Render : SDL.Event : msgs')
           )
-       => AppConfig es model msg
+       => AppConfig es model msgs inMsgs
        -> Eff os ()
 runApp = flip withSDLApp runApp'
 
 --------------------------------------------------------------------------------
 
 -- | Initialize the app
-withSDLApp          :: ( es ~ Send' msg : Resource : Concurrent : os
+withSDLApp          :: ( es ~ Send msg : Resource : Concurrent : os
                        , IOE :> os
                        )
-                    => AppConfig es model msg
+                    => AppConfig es model msg inMsgs
                     -- ^ The configuration describing how to set up our application
-                    -> (App es model msg -> Eff (Resource : Concurrent : os) ())
+                    -> (App es model msg inMsgs -> Eff (Resource : Concurrent : os) ())
                     -- ^ the continuation; i.e. the actual application
                     -> Eff os ()
 withSDLApp appCfg withApp = do
@@ -69,9 +76,8 @@ withSDLApp appCfg withApp = do
     texture'  <- manage (createCairoTexture' renderer' window')
                         SDL.destroyTexture
     -- initialize the event queue
-    let initialActions = maybeToList (Continue <$> appCfg^.startupAction)
     queue  <- atomically $ do q <- newTBQueue maxQueueSize
-                              mapM_ (writeTBQueue q) initialActions
+                              mapM_ (writeTBQueue q) (appCfg^.initialMessages)
                               pure q
 
     -- run the actuall application
@@ -84,12 +90,19 @@ withSDLApp appCfg withApp = do
 
 
 -- | Handles some of the default events, in particular closing the window and quitting
-withDefaultSDLEvents :: (SDL.Event -> msg) -> SDL.Event -> LoopAction msg
-withDefaultSDLEvents handle e = case SDL.eventPayload e of
-  SDL.WindowClosedEvent _ -> Shutdown
-  SDL.QuitEvent           -> Shutdown
-  _                       -> Continue $ handle e
-
+withDefaultSDLEvents         :: forall msgs inMsgs es model.
+                                ( Send msgs :> es
+                                , Shutdown :| msgs
+                                , SDL.Event :| inMsgs
+                                )
+                             => Handler es model inMsgs
+                             -> Handler es model inMsgs
+withDefaultSDLEvents handler = \model msg -> case Vary.into @SDL.Event msg of
+    Just e  -> case SDL.eventPayload e of
+                 SDL.WindowClosedEvent _ -> Unchanged <$ sendMsg @msgs Shutdown
+                 SDL.QuitEvent           -> Unchanged <$ sendMsg @msgs Shutdown
+                 _                       -> handler model msg
+    Nothing -> handler model msg
 
 -- | Interleave the two lists
 interleaved       :: [a] -> [a] -> [a]
@@ -101,19 +114,23 @@ interleaved xs ys = case xs of
 
 
 -- | Runs the app
-runApp'     :: forall os es model msg.
-               ( es ~ Send' msg : os
+runApp'     :: forall os es model msgs inMsgs msgs'.
+               ( es ~ Send msgs : os
                , IOE        :> os
                , Concurrent :> os
                , Resource   :> os
+
+               , msgs   ~ (Shutdown : inMsgs)
+               , inMsgs ~ (Render : SDL.Event : msgs')
                )
-            => App es model msg
+            => App es model msgs inMsgs
             -> Eff os ()
 runApp' app = runSendWith queue $ go (app^.config.appModel)
   where
     queue        = app^.eventQueue
 
-    handleAction           :: model -> msg -> Eff es (Updated model)
+    -- not the type msgs', sicne we've already handled shutdown
+    handleAction           :: model -> Vary.Vary inMsgs -> Eff es (Updated model)
     handleAction model msg = (app^.config.handler) app model msg
 
     -- | The main app loop; we essentially get the current sdl events and the current
@@ -122,26 +139,26 @@ runApp' app = runSendWith queue $ go (app^.config.appModel)
     --
     -- we interleave the events to prevent starvation.
     go   :: model -> Eff es ()
-    go m = do sdlEvents <- fmap (app^.config.liftSDLEvent) <$> liftIO SDL.pollEvents
+    go m = do sdlEvents <- fmap Vary.from <$> liftIO SDL.pollEvents
               appEvents <- atomically $ flushTBQueue queue
               handleAll m $ interleaved sdlEvents appEvents
     -- | handleAll does the actual event handling, whereas the go function collects the
     -- events to run.
-    handleAll       :: model -> [LoopAction msg] -> Eff es ()
+    handleAll       :: model -> [Vary.Vary msgs] -> Eff es ()
     handleAll model = \case
       []     -> go model
-      e:evts -> case e of
-        Shutdown     -> pure ()
-        Continue act -> handleAction model act >>= \case
+      e:evts -> case Vary.pop (Vary.morph e) of
+        Right Shutdown -> pure ()
+        Left msg       -> handleAction model msg >>= \case
           Unchanged      -> handleAll model  evts
-          Changed model' -> do -- sendMessage (Continue Render)
+          Changed model' -> do sendMsg @msgs Render
                                handleAll model' evts
 
-type Send' msg = Send (LoopAction msg) -- (RenderAction msg))
+-- type Send msg = Send (LoopAction msg) -- (RenderAction msg))
 
-data RenderAction msg = Render
-                      | Act msg
-                      deriving (Show,Eq)
+-- data RenderAction msg = Render
+--                       | Act msg
+--                       deriving (Show,Eq)
 
 
 -- withReRendering     :: Handler m model msg
