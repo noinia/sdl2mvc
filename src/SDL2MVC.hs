@@ -114,14 +114,16 @@ myHandler model msg = case toEither msg of
 
 
   where
-    myTri :: Triangle (Point 2 Double) :+ PathAttributes
-    myTri = scaleUniformlyBy 200 $
-      Triangle (Point2 (-0.5) (-0.5))
-                     (Point2 (0.5)  (-0.5))
-                     (Point2 0       0.5)
+    myTri :: [Rectangle (Point 2 Double) :+ PathAttributes]
+    myTri = [Rect 0 0 200 400
+      -- scaleUniformlyBy 200 $
+      -- Triangle (Point2 (-0.5) (-0.5))
+      --                (Point2 (0.5)  (-0.5))
+      --                (Point2 0       0.5)
             :+ (def&pathColor .~ StrokeAndFill def (opaque red))
-
-
+            , Rect 200 400 200 300
+            :+ (def&pathColor .~ StrokeAndFill def (opaque blue))
+            ]
 
 
 myHandler'           :: forall msgs inMsgs es.
@@ -388,17 +390,33 @@ normalizedCenteredOrigin rect = let Vector2 w h = size rect
                                 in mkViewport rect $ scaling s
 
 
--- | Creates a viewport in which the origin at the top left of the viewport
+-- -- | Creates a viewport in which the origin at the top left of the viewport
+-- --
+-- -- (moreover, this does not flip the coordinate system, so in a typical graphics setup
+-- -- coordinates move downward)
+-- graphicsOrigin       :: ( Num r
+--                         ) => Rectangle (Point 2 r) -> Viewport r
+-- graphicsOrigin rect' = Viewport rect' $
+--                        (translation $ topLeft .-. origin) |.| scaling (Vector2 1 (-1))
+--   where
+--     Vector2 _ h = size rect'
+--     topLeft     = (rect'^.minPoint)&yCoord +~ h
+
+
+-- | Same as 'alignedOrigin', except that we also flip the y-direction.
 --
--- (moreover, this does not flip the coordinate system, so in a typical graphics setup
--- coordinates move downward)
-graphicsOrigin       :: ( Num r
-                        ) => Rectangle (Point 2 r) -> Viewport r
-graphicsOrigin rect' = Viewport rect' $
-                       (translation $ topLeft .-. origin) |.| scaling (Vector2 1 (-1))
+-- From the view of a math coordinate system, this puts the origin in the top-left, and
+-- has the y-coordinates going down.
+--
+-- From the view of a "graphics" coordiante system, this actually puts the origin
+-- in the bottom left of the rectangle and the y-axixs up; so it turns the
+-- viewport into a "proper" math viewport.
+graphicsOrigin      :: Num r => Rectangle (Point 2 r) -> Viewport r
+graphicsOrigin rect = Viewport rect
+                    $     translation ((rect^.minPoint) .-. origin ^+^ Vector2 0 h)
+                      |.| scaling (Vector2 1 (-1))
   where
-    Vector2 _ h = size rect'
-    topLeft     = (rect'^.minPoint)&yCoord +~ h
+    h = (size rect) ^.component @1 -- height of the rect
 
 --------------------------------------------------------------------------------
 
@@ -460,22 +478,17 @@ textLabel   :: Text -> TextLabel
 textLabel t = TextLabel t origin
 
 myUI'              :: MyModel -> RenderTarget -> Drawing
-myUI' model screen = mainSection
-
-
-
-  -- draw [ draw menuBar
-  --                         , mainSection
-  --                         , draw footer
-  --                         ]
+myUI' model screen = draw [ draw menuBar
+                          , mainSection
+                          , draw footer
+                          ]
   where
     Vector2 w h = size $ screen^.target.viewPort
-    menuBar = Rectangle origin                        (Point2 w menuBarHeight)
-              :+ (def&pathColor .~ FillOnly menuBarColor)
+    menuBar = drawIn (alignedOrigin $ Rect 0 0 w menuBarHeight) $
+              Blank menuBarColor
 
-
-    footer  = Rectangle (Point2 0 (h - footerHeight)) (Point2 w h)
-              :+ (def&pathColor .~ FillOnly menuBarColor)
+    footer  = drawIn (alignedOrigin $ Rect 0 (h-footerHeight) w footerHeight) $
+              Blank menuBarColor
 
     mainSection = draw [ mainPanel
                        , mainArea
@@ -493,14 +506,14 @@ myUI' model screen = mainSection
                   , foldMapOf (layers.traverse) drawLayer model
                   ]
 
-    mainPanelVP = graphicsOrigin           $ Rect 0 menuBarHeight w mainHeight
+    mainPanelVP = alignedOrigin $ Rect 0 menuBarHeight w mainHeight
     -- mainAreaVP  = normalizedCenteredOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
-    mainAreaVP  = alignedOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
+    mainAreaVP  = graphicsOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
 
     mainHeight = h-footerHeight-menuBarHeight
 
     menuBarHeight = 20
-    footerHeight  = 20
+    footerHeight  = 200
 
     mainPanelWidth = 200
 
@@ -512,6 +525,14 @@ rows :: [Drawing] -> Drawing
 rows = fold . snd . List.mapAccumL (\acc g -> (acc + 20, translateBy (Vector2 0 acc) g)) 0
 
 --------------------------------------------------------------------------------
+
+
+-- | Transformation that flips the y-axis and shifts by h, essenitally
+-- moving the origin from the top-left facing downards to the
+-- bottom-left and upwards.
+flipY'   :: ( Num r
+            ) => r -> Transformation 2 r
+flipY' h = translation (Vector2 0 h) |.| scaling (Vector2 1 (-1))
 
 
 
