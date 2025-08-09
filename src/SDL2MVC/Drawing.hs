@@ -27,13 +27,14 @@ import           Data.Colour.SRGB (RGB(..), toSRGB)
 import           Data.Default.Class
 import           Data.Foldable
 import           Data.Kind (Type,Constraint)
+import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified GI.Cairo.Render as Cairo
 import qualified GI.Cairo.Render.Matrix as CairoM
 import           HGeometry.Ball
-import           HGeometry.Ellipse
 import           HGeometry.Box
+import           HGeometry.Ellipse
 import           HGeometry.Ext
 import           HGeometry.Matrix
 import           HGeometry.Point
@@ -48,7 +49,7 @@ import           SDL2MVC.Drawing.Text
 import qualified Vary
 
 
-import Data.Typeable
+import           Data.Typeable
 import           Debug.Trace
 
 --------------------------------------------------------------------------------
@@ -117,15 +118,17 @@ draw' = Drawing . Seq.singleton . Vary.from
 
 --------------------------------------------------------------------------------
 
-drawIn vp = (drawViewport vp <>) . drawInViewport vp . draw
+-- drawIn vp = (<> drawViewport vp) . drawInViewport vp . draw
 
 drawViewport    :: Viewport Double -> Drawing
 drawViewport vp = draw $ (vp^.viewPort) :+ (def @PathAttributes)
 
+-- | Given a drawing, draws it in the given viewport ; i.e. applies the appropriate
+-- transform
+--
+drawInViewport :: Viewport Double -> Drawing -> Drawing
+drawInViewport = toHostFrom
 
--- | Given a drawing, draws it in the given viewport.
-drawInViewport    :: Viewport Double -> Drawing -> Drawing
-drawInViewport vp i = toHostFrom vp i
 
 --------------------------------------------------------------------------------
 
@@ -133,9 +136,10 @@ class Drawable t where
   -- | Given an object, construct a drawing out of it.
   draw :: t -> Drawing
 
-  -- -- | Given a viewport, and some some geometric object, specified in world coordinates,
-  -- -- constructs a drawing of the object in terms of *host* coordinates.
-  -- drawIn :: Viewport Double -> t -> Drawing
+  -- | Given a viewport, and some some geometric object, specified in world coordinates,
+    -- constructs a drawing of the object in terms of *host* coordinates.
+  drawIn    :: Viewport Double -> t -> Drawing
+  drawIn vp = drawInViewport vp . draw
 
 
 
@@ -172,6 +176,7 @@ instance Drawable (TextLabel :+ TextAttributes) where
 
 instance Drawable Blank where
   draw = draw'
+  drawIn vp (Blank c) = draw' $ (vp^.viewPort) :+ (def&pathColor .~ FillOnly c)
 
 instance Drawable Drawing where
   draw = id -- toHostIn vp

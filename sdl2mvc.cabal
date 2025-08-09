@@ -78,6 +78,8 @@ library
         SDL2MVC.Drawing.Path
         SDL2MVC.Drawing.Color
 
+        SDL2MVC.Layer
+
     -- other-modules:
 
 

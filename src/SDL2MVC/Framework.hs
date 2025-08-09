@@ -150,7 +150,7 @@ runApp' app = runSendWith queue $ go (app^.config.appModel)
     handleAll       :: model -> [Vary.Vary msgs] -> Eff es ()
     handleAll model = \case
       []     -> go model
-      e:evts -> case Vary.pop (Vary.morph e) of
+      e:evts -> case Vary.pop e of
         Right Shutdown -> pure ()
         Left msg       -> handleAction model msg >>= \case
           Unchanged      -> handleAll model  evts

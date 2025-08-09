@@ -11,10 +11,14 @@ import           Control.Lens hiding (elements)
 import           Data.Colour
 import qualified Data.Colour as Colour
 import           Data.Colour.Names (red,blue,white,green,orange)
-import           Data.Colour.SRGB (RGB(..), toSRGB)
+import qualified Data.Colour.Names as Colour
+import           Data.Colour.SRGB (RGB(..), toSRGB, sRGB24)
 import           Data.Default.Class
+import           Data.Foldable
 import           Data.Foldable (for_)
 import qualified Data.List as List
+import qualified Data.Sequence as Seq
+import           Data.Text (Text)
 import           Debug.Trace
 import           Effectful
 import           GHC.Natural
@@ -23,30 +27,36 @@ import qualified GI.Cairo.Render.Matrix as CairoM
 import           HGeometry.Ball
 import           HGeometry.Box
 import           HGeometry.Ext
-import           HGeometry.Matrix
 import           HGeometry.Point
 import           HGeometry.Transformation
 import           HGeometry.Triangle
 import           HGeometry.Vector
 import           HGeometry.Viewport
-import           Linear
+import           Linear hiding (identity)
 import qualified Linear.Affine as Linear
 import qualified SDL
 import           SDL2MVC.App
 import           SDL2MVC.Cairo
+import           SDL2MVC.Drawing
 import           SDL2MVC.Framework
+import           SDL2MVC.Layer
 import           SDL2MVC.Reaction
 import           SDL2MVC.Render
 import           SDL2MVC.Send
-import           SDL2MVC.Drawing
 import           SDL2MVC.Updated
 import qualified Vary
-import           Data.Text (Text)
+
 --------------------------------------------------------------------------------
 -- * Model
 
 
+
+
+
+
+
 data MyModel = MyModel { _mousePosition :: !(Maybe (Linear.Point V2 Int))
+                       , _layers        :: Seq.Seq Layer
                        }
              deriving (Show,Eq)
 
@@ -54,13 +64,14 @@ makeLenses ''MyModel
 
 defaultModel :: MyModel
 defaultModel = MyModel { _mousePosition = Nothing
+                       , _layers        = mempty
                        }
 
 
 --------------------------------------------------------------------------------
 -- * Controller
 
-data MyAction = Skip
+data MyAction = AddLayer LayerName Drawing
               deriving (Show,Eq)
 
 -- data WithBasicActions = LoopAction RenderAction
@@ -83,14 +94,21 @@ myHandler           :: forall es inMsgs outMsgs.
                     => Handler es MyModel outMsgs inMsgs
 myHandler model msg = case toEither msg of
   Left e -> case SDL.eventPayload e of
-              SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
+    SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
 
                                                 in pure $ Changed (model&mousePosition ?~ p)
 
-              SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
-              SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
-              _                              -> pure Unchanged
-  Right Skip -> pure Unchanged
+    SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
+    SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
+
+
+    SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
+      SDL.Pressed -> Unchanged <$ sendMsg @outMsgs (AddLayer "dummy" (draw $ head myRectangles))
+      _           -> pure Unchanged
+
+
+    _                              -> pure Unchanged
+  Right (AddLayer name d) -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
 
 
 
@@ -370,22 +388,29 @@ myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: P
                            <$> model^.mousePosition of
     Nothing -> liftIO $ print "cursor outside screen"
     Just p  -> do renderDrawingIn (screen^.target)
-                    [ draw $ Blank (opaque white)
-                    -- , draw $ head myRectangles
-                    , draw $ Disk (origin :: Point 2 Double) 100 :+ (def&pathColor .~ FillOnly (opaque black))
-                    , draw $ Disk p 4 :+ (def&pathColor .~ FillOnly (opaque green))
-
-                    , draw $ TextLabel "foo" (Point2 500 100) :+ (def @TextAttributes)
-                    , drawIn centeredVP $ TextLabel "origin" origin' :+ (def @TextAttributes)
-                    , drawIn centeredVP $ myRectangles
-                    --   tail myRectangles
-                    -- , drawIn centeredVP $ head myRectangles
+                    [ draw $ Blank (opaque white) -- background
+                    , myUI' model screen
+                    , cursor p
                     ]
 
   where
-    origin'  = origin :: Point 2 Double
-    centeredVP = traceShowWith ("centeredvp",) $
-      normalizedCenteredOrigin $ (/2) <$> screen^.target.viewPort.to size
+    cursor p = draw $ Disk p 4 :+ (def&pathColor .~ FillOnly (opaque green))
+
+                    -- -- , draw $ head myRectangles
+                    -- , draw $ Disk (origin :: Point 2 Double) 100 :+ (def&pathColor .~ FillOnly (opaque black))
+                    -- ,
+
+                    -- , draw $ TextLabel "foo" (Point2 500 100) :+ (def @TextAttributes)
+                    -- , drawIn centeredVP $ TextLabel "origin" origin' :+ (def @TextAttributes)
+                    -- , drawIn centeredVP $ myRectangles
+                    -- --   tail myRectangles
+                    -- -- , drawIn centeredVP $ head myRectangles
+                    -- ]
+
+  -- where
+  --   origin'  = origin :: Point 2 Double
+  --   centeredVP = traceShowWith ("centeredvp",) $
+  --     normalizedCenteredOrigin $ (/2) <$> screen^.target.viewPort.to size
 
 
 
@@ -402,6 +427,64 @@ myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: P
       --                           (size (screen^.target.viewPort))
       --                  ) $ \(r :+ ats) -> rectangle ats r
       --             renderTextAt (Point2 100 200) "foo"
+
+
+--------------------------------------------------------------------------------
+
+textLabel   :: Text -> TextLabel
+textLabel t = TextLabel t origin
+
+myUI'              :: MyModel -> RenderTarget -> Drawing
+myUI' model screen = draw [ draw menuBar
+                          , mainSection
+                          , draw footer
+                          ]
+  where
+    Vector2 w h = size $ screen^.target.viewPort
+    menuBar = Rectangle origin                        (Point2 w menuBarHeight)
+              :+ (def&pathColor .~ FillOnly menuBarColor)
+
+
+    footer  = Rectangle (Point2 0 (h - footerHeight)) (Point2 w h)
+              :+ (def&pathColor .~ FillOnly menuBarColor)
+
+    mainSection = draw [ mainPanel
+                       , mainArea
+                       ]
+
+    mainPanel = drawIn mainPanelVP $
+                  [ draw $ Blank panelColor
+                  , rows [ draw $ textLabel (l^.layerName) :+ (def @TextAttributes)
+                         | l <- model^..layers.traverse
+                         ]
+                  ]
+
+
+    mainArea  = drawIn mainAreaVP  $ Blank (opaque white)
+
+    mainPanelVP = mkViewport (Rectangle (Point2 0              menuBarHeight)
+                                        (Point2 mainPanelWidth (h - footerHeight))
+                             ) identity
+
+    mainAreaVP  = mkViewport (Rectangle (Point2 mainPanelWidth menuBarHeight)
+                                        (Point2 w (h-footerHeight))
+                             ) identity
+
+    menuBarHeight = 20
+    footerHeight  = 20
+
+    mainPanelWidth = 100
+
+    panelColor       = opaque $ sRGB24 249 250 251
+    menuBarColor     = opaque $ sRGB24 74 84 100
+    menuBarTextColor = opaque $ sRGB24 142 149 160
+
+rows :: [Drawing] -> Drawing
+rows = fold . snd . List.mapAccumL (\acc g -> (acc + 10, translateBy (Vector2 0 acc) g)) 0
+
+--------------------------------------------------------------------------------
+
+
 
 --------------------------------------------------------------------------------
 
