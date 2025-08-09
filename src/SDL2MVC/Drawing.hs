@@ -1,12 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 module SDL2MVC.Drawing
   ( Drawing(..)
-  , draw
+  , drawIn
+  , drawInViewport
   , DrawingElements
 
   , Blank(..)
-  , TextLabel(..)
-  , TextAttributes(TextAttributes), textColor, textSize, location
 
   , renderDrawingIn
   , Drawable(..)
@@ -14,12 +14,9 @@ module SDL2MVC.Drawing
 
 
   , Color
-  , Stroke(Stroke), strokeWidth, strokeColor
-  , StrokeAndFillSpec(..)
-  , _Stroke, _Fill
 
-  , PathAttributes(PathAttributes)
-  , pathColor
+  , module SDL2MVC.Drawing.Path
+  , module SDL2MVC.Drawing.Text
   ) where
 
 import           Control.Lens hiding (elements)
@@ -29,170 +26,160 @@ import           Data.Colour.Names (red,blue,white,green,orange)
 import           Data.Colour.SRGB (RGB(..), toSRGB)
 import           Data.Default.Class
 import           Data.Foldable
+import           Data.Kind (Type,Constraint)
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified GI.Cairo.Render as Cairo
 import qualified GI.Cairo.Render.Matrix as CairoM
 import           HGeometry.Ball
+import           HGeometry.Ellipse
 import           HGeometry.Box
 import           HGeometry.Ext
 import           HGeometry.Matrix
 import           HGeometry.Point
+import           HGeometry.Properties
 import           HGeometry.Transformation
 import           HGeometry.Triangle
 import           HGeometry.Vector
 import           HGeometry.Viewport
+import           SDL2MVC.Drawing.Color
+import           SDL2MVC.Drawing.Path
+import           SDL2MVC.Drawing.Text
 import qualified Vary
 
-import Debug.Trace
---------------------------------------------------------------------------------
 
-
-type Color = Colour.AlphaColour Double
-
-data Stroke = Stroke { _strokeWidth :: {-#UNPACK#-}!Double
-                     , _strokeColor :: !Color
-                     }
-            deriving (Show,Eq)
-
-makeLenses ''Stroke
-
-instance Default Stroke where
-  def = Stroke 1 (opaque Colour.black)
-
--- | Paths must have stroke, fill, or both
-data StrokeAndFillSpec =
-    StrokeOnly  {-# UNPACK #-}!Stroke
-  | FillOnly    {-# UNPACK #-}!Color
-  | StrokeAndFill  {-# UNPACK #-}!Stroke -- ^ stroke spec
-                   {-# UNPACK #-}!Color -- ^ fill color
-    deriving stock (Show,Eq)
-
-instance Default StrokeAndFillSpec where
-  def = StrokeOnly def
-
--- | Lens to access the Stroke of a StrokeAndFill. This may set the stroke.
-_Stroke :: Lens' StrokeAndFillSpec (Maybe Stroke)
-_Stroke = lens (\case
-                   StrokeOnly s      -> Just s
-                   StrokeAndFill s _ -> Just s
-                   _                 -> Nothing
-               )
-               (\spec -> \case
-                   Nothing -> case spec of
-                                StrokeAndFill _ f -> FillOnly f
-                                _                 -> spec -- impossible to delete stroke
-                   Just s  -> case spec of
-                                StrokeOnly _      -> StrokeOnly s
-                                StrokeAndFill _ f -> StrokeAndFill s f
-                                FillOnly f        -> StrokeAndFill s f
-               )
-
--- | Lens to access the fill color of a StrokeAndFill. This may set the stroke and fill
-_Fill :: Lens' StrokeAndFillSpec (Maybe Color)
-_Fill = lens (\case
-                 FillOnly f        -> Just f
-                 StrokeAndFill _ f -> Just f
-                 _                 -> Nothing
-             )
-             (\spec -> \case
-                 Nothing -> case spec of
-                              StrokeAndFill s _ -> StrokeOnly s
-                              _                 -> spec -- impossible to delete fill
-                 Just f  -> case spec of
-                              StrokeOnly s      -> StrokeAndFill s f
-                              FillOnly _        -> FillOnly f
-                              StrokeAndFill s _ -> StrokeAndFill s f
-             )
-
-
-
-data PathAttributes = PathAttributes { _strokeAndFill :: {-# UNPACK #-} !StrokeAndFillSpec
-                                     }
-  deriving stock (Show,Eq)
-
-pathColor :: Lens' PathAttributes StrokeAndFillSpec
-pathColor = lens _strokeAndFill (\ats c -> ats { _strokeAndFill = c} )
-
-instance Default PathAttributes where
-  def = PathAttributes def
-
-instance Semigroup PathAttributes where
-  -- ^ Later options may overwrite former ones.
-  (PathAttributes c) <> (PathAttributes c') = PathAttributes c'
-
-instance Monoid PathAttributes where
-  mempty = def
-
-
---------------------------------------------------------------------------------
-
-data TextAttributes = TextAttributes { _textColor :: Color
-                                     , _textSize  :: Double
-                                     , _location  :: Point 2 Double
-                                     }
-                      deriving (Show,Eq)
-
-makeLenses 'TextAttributes
-
-
-instance Default TextAttributes where
-  def = TextAttributes (opaque black) 20 origin
+import Data.Typeable
+import           Debug.Trace
 
 --------------------------------------------------------------------------------
 -- * Drawing
 
 -- | The Main Drawing type
 newtype Drawing = Drawing (Seq.Seq (Vary.Vary DrawingElements))
-  deriving newtype (Show,Eq,Semigroup,Monoid,Renderable)
+  deriving newtype (Show,Eq,Semigroup,Monoid,Renderable,IsTransformable)
+
+type instance Dimension Drawing = 2
+type instance NumType   Drawing = Double
+
+
 
 newtype Blank = Blank Color
   deriving (Show,Eq)
 
-newtype TextLabel = TextLabel Text
-  deriving (Show,Eq)
+
+type instance Dimension Blank = 2
+type instance NumType   Blank = Double
+
+instance IsTransformable Blank where
+  transformBy _ = id
+
+type instance Dimension (Vary.Vary (t:ts)) = Dimension t
+type instance NumType   (Vary.Vary (t:ts)) = NumType t
+
+
+instance (IsTransformable g, IsTransformableHelper (g:gs) (Dimension g) (NumType g)
+         ) => IsTransformable (Vary.Vary (g:gs)) where
+  transformBy = transformBy'
+
+
+class IsTransformableHelper ts d r where
+  transformBy' :: Transformation d r -> Vary.Vary ts -> Vary.Vary ts
+
+
+instance IsTransformableHelper '[] d r where
+  transformBy' _ = id
+
+-- instance IsTransformable g => IsTransformable (Vary.Vary '[g]) where
+instance (IsTransformable g, IsTransformableHelper gs d r
+         , Dimension g ~ d
+         , NumType   g ~ r
+         ) => IsTransformableHelper (g:gs) d r where
+  transformBy' t v = case Vary.pop v of
+                      Right g -> Vary.from     $ transformBy t g
+                      Left v' -> Vary.pushTail $ transformBy' t v'
+
+type instance Dimension (Seq.Seq g) = Dimension g
+type instance NumType   (Seq.Seq g) = NumType g
+
+instance IsTransformable g => IsTransformable (Seq.Seq g) where
+  transformBy t = fmap (transformBy t)
 
 
 type DrawingElements = [ Rectangle (Point 2 Double) :+ PathAttributes
-                       , Disk      (Point 2 Double) :+ PathAttributes
+                       , Ellipse Double             :+ PathAttributes
                        , Triangle  (Point 2 Double) :+ PathAttributes
                        , Blank
                        , TextLabel :+ TextAttributes
                        ]
 
-draw :: g Vary.:| DrawingElements => g -> Drawing
-draw = Drawing . Seq.singleton . Vary.from
+draw' :: g Vary.:| DrawingElements => g -> Drawing
+draw' = Drawing . Seq.singleton . Vary.from
+
+--------------------------------------------------------------------------------
+
+drawIn vp = (drawViewport vp <>) . drawInViewport vp . draw
+
+drawViewport    :: Viewport Double -> Drawing
+drawViewport vp = draw $ (vp^.viewPort) :+ (def @PathAttributes)
+
+
+-- | Given a drawing, draws it in the given viewport.
+drawInViewport    :: Viewport Double -> Drawing -> Drawing
+drawInViewport vp i = toHostFrom vp i
 
 --------------------------------------------------------------------------------
 
 class Drawable t where
-  drawIn :: Viewport Double -> t -> Drawing
+  -- | Given an object, construct a drawing out of it.
+  draw :: t -> Drawing
+
+  -- -- | Given a viewport, and some some geometric object, specified in world coordinates,
+  -- -- constructs a drawing of the object in terms of *host* coordinates.
+  -- drawIn :: Viewport Double -> t -> Drawing
+
+
 
 instance Drawable t => Drawable [t] where
-  drawIn vp = foldMap (drawIn vp)
+  draw = foldMap draw
 instance Drawable t => Drawable (Seq.Seq t) where
-  drawIn vp = foldMap (drawIn vp)
+  draw = foldMap draw
+
+instance Drawable (Rectangle (Point 2 Double) :+ PathAttributes) where
+  draw = draw'
+instance Drawable (Triangle (Point 2 Double) :+ PathAttributes) where
+  draw = draw'
+instance Drawable (Ellipse Double :+ PathAttributes) where
+  draw = draw'
+instance Drawable (Disk (Point 2 Double) :+ PathAttributes) where
+  draw (d :+ ats) = draw $ (d^._DiskCircle.re _EllipseCircle) :+ ats
+
+instance Drawable (TextLabel :+ TextAttributes) where
+  draw = draw'
+
+-- instance Drawable (Disk (Point 2 Double) :+ PathAttributes) where
+--   drawIn _ = draw
+
 
 
 -- instance Drawable (Vary.Vary '[]) where
 --   drawIn _ _ = mempty
 
 -- instance (Drawable g, Drawable (Vary.Vary gs)) => Drawable (Vary.Vary (g:gs)) where
---   drawIn vp v = case Vary.pop v of
+--   draw v = case Vary.pop v of
 --                   Right g -> renderIn vp g
 --                     Left v' -> renderIn vp v'
 
 
--- instance Drawable (Vary xs) where
---   drawIn vp =
-
+instance Drawable Blank where
+  draw = draw'
 
 instance Drawable Drawing where
-  drawIn _ = id
+  draw = id -- toHostIn vp
 
+-- (vp^.viewPort) apply the transform
 
 renderDrawingIn      :: Drawable t => Viewport Double -> t -> Cairo.Render ()
-renderDrawingIn vp g = renderIn vp $ drawIn vp g
+renderDrawingIn vp g = renderIn (vp^.viewPort) $ drawIn vp g
 
 -- instance Rectangle (Point 2 Double) :+ PathAttributes where
 --   draw (r :+ ats) = rectangle ats r
@@ -249,6 +236,18 @@ disk ats disk = withStrokeAndFill (ats^.pathColor) $ do
                        r          = realToFrac $ disk^.squaredRadius
                    Cairo.arc x y (sqrt r) 0 (2*pi)
 
+
+ellipse          :: Real r
+                 => PathAttributes -> Ellipse r -> Cairo.Render ()
+ellipse ats e = withStrokeAndFill (ats^.pathColor) $ do
+                   Cairo.save
+                   Cairo.transform (e^.ellipseMatrix.to toCairoMatrix)
+                   Cairo.arc 0 0 1 0 (2*pi)
+                   Cairo.restore
+
+
+
+
 toRGBA col = ( toSRGB $ col `Data.Colour.over` black
              , alphaChannel col
              )
@@ -256,11 +255,9 @@ toRGBA col = ( toSRGB $ col `Data.Colour.over` black
 setColor col = let (RGB r g b, a) = toRGBA col
                in Cairo.setSourceRGBA r g b a
 
-rectangle          :: (Point_ point 2 r, Real r, Show point)
+rectangle          :: (Point_ point 2 r, Real r)
                    => PathAttributes -> Rectangle point -> Cairo.Render ()
-rectangle ats rect | traceShow ("rectangle",rect) False = undefined
-                   | otherwise =
-                     withStrokeAndFill (ats^.pathColor) $ do
+rectangle ats rect = withStrokeAndFill (ats^.pathColor) $ do
                         let Point2 x y  = rect^.minPoint.asPoint
                                           & coordinates %~ realToFrac
                             Vector2 w h = realToFrac <$> size rect
@@ -283,7 +280,7 @@ toPoints = fmap (\p -> p^.asPoint &coordinates %~ realToFrac)
 -- * Renderable instances
 
 class Renderable t where
-  renderIn :: Viewport Double -> t -> Cairo.Render ()
+  renderIn :: Rectangle (Point 2 Double) -> t -> Cairo.Render ()
 
 instance Renderable t => Renderable (Seq.Seq t) where
   renderIn vp = traverse_ (renderIn vp)
@@ -301,11 +298,11 @@ instance (Renderable g, Renderable (Vary.Vary gs)) => Renderable (Vary.Vary (g:g
 
 instance Renderable Blank where
   renderIn vp (Blank c) = rectangle (def&pathColor .~ FillOnly c)
-                                    (vp^.viewPort)
+                                    vp
 
 instance Renderable (TextLabel :+ TextAttributes) where
-  renderIn _ (TextLabel t :+ ats) = do applyTextAttributes ats
-                                       renderTextAt (ats^.location) t
+  renderIn _ (TextLabel t p :+ ats) = do applyTextAttributes ats
+                                         renderTextAt p t
 
 applyTextAttributes     :: TextAttributes -> Cairo.Render ()
 applyTextAttributes ats = do setColor (ats^.textColor)
@@ -316,6 +313,9 @@ instance Renderable (Rectangle (Point 2 Double) :+ PathAttributes) where
 
 instance Renderable (Triangle (Point 2 Double) :+ PathAttributes) where
   renderIn _ (g :+ ats) = triangle ats g
+
+instance Renderable (Ellipse Double :+ PathAttributes) where
+  renderIn _ (g :+ ats) = ellipse ats g
 
 instance Renderable (Disk (Point 2 Double) :+ PathAttributes) where
   renderIn _ (g :+ ats) = disk ats g

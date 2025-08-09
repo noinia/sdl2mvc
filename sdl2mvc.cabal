@@ -43,7 +43,7 @@ common setup
     default-language: GHC2024
     default-extensions:
       --   DataKinds
-      -- , TypeFamilies
+        TypeFamilies
       -- , GADTs
       -- , KindSignatures
       -- , ScopedTypeVariables
@@ -55,7 +55,7 @@ common setup
       -- , PatternSynonyms
       -- , TupleSections
       -- , LambdaCase
-      ViewPatterns
+      , ViewPatterns
       -- , FunctionalDependencies
 
 
@@ -71,9 +71,16 @@ library
         SDL2MVC.Framework
         SDL2MVC.Updated
         SDL2MVC.Send
+
         SDL2MVC.Drawing
+        -- these may probably go to other modeuls
+        SDL2MVC.Drawing.Text
+        SDL2MVC.Drawing.Path
+        SDL2MVC.Drawing.Color
 
     -- other-modules:
+
+
     -- other-extensions:
     hs-source-dirs:   src
 

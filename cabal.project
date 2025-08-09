@@ -2,6 +2,7 @@ write-ghc-environment-files: always
 tests: true
 packages:
     .
+    haskell-vary
     -- "../hgeometry/hgeometry"
     -- "../hgeometry/hgeometry-combinatorial"
     -- "../hiraffe"

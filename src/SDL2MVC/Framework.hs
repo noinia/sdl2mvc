@@ -91,19 +91,19 @@ withSDLApp appCfg withApp = do
 
 
 -- | Handles some of the default events, in particular closing the window and quitting
-withDefaultSDLEvents         :: forall msgs inMsgs es model.
-                                ( Send msgs :> es
-                                , Shutdown :| msgs
-                                , SDL.Event :| inMsgs
-                                )
-                             => Handler es model msgs inMsgs
-                             -> Handler es model msgs inMsgs
-withDefaultSDLEvents handler = \model msg -> case Vary.into @SDL.Event msg of
+withDefaultSDLEvents          :: forall msgs inMsgs es model.
+                                 ( Send msgs :> es
+                                 , Shutdown :| msgs
+                                 , SDL.Event :| inMsgs
+                                 )
+                              => Handler es model msgs inMsgs
+                              -> Handler es model msgs inMsgs
+withDefaultSDLEvents handler' = \model msg -> case Vary.into @SDL.Event msg of
     Just e  -> case SDL.eventPayload e of
                  SDL.WindowClosedEvent _ -> Unchanged <$ sendMsg @msgs Shutdown
                  SDL.QuitEvent           -> Unchanged <$ sendMsg @msgs Shutdown
-                 _                       -> handler model msg
-    Nothing -> handler model msg
+                 _                       -> handler' model msg
+    Nothing -> handler' model msg
 
 -- | Interleave the two lists
 interleaved       :: [a] -> [a] -> [a]

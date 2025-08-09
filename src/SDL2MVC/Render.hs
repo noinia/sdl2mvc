@@ -19,13 +19,13 @@ import           SDL2MVC.Cairo
 --------------------------------------------------------------------------------
 
 -- | Handles a render action
-handleRender             :: IOE :> es
-                         => App es model msgs inMsgs
-                         -> Handler es model outMsgs inMsgs'
-                         -> Handler es model outMsgs (Render : inMsgs')
-handleRender app handler = \model msg -> case Vary.pop msg of
+handleRender              :: IOE :> es
+                          => App es model msgs inMsgs
+                          -> Handler es model outMsgs inMsgs'
+                          -> Handler es model outMsgs (Render : inMsgs')
+handleRender app handler' = \model msg -> case Vary.pop msg of
     Right Render -> Unchanged <$ runRender app model
-    Left msg'    -> handler model msg'
+    Left msg'    -> handler' model msg'
 
 runRender            :: IOE :> es
                      => App es model msgs inMsgs
@@ -35,7 +35,7 @@ runRender app model = do let renderer = app^.rendererRef
                              texture  = app^.textureRef
                          SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
                          let screen = Rectangle origin (Point2 (realToFrac w) (realToFrac h))
-                             vp     = mkViewport screen identity
+                             vp     = Viewport screen identity
                              renderTarget = RenderTarget texture vp
                          liftIO $ withCairoTexture texture $ do
                            (app^.config.appRender) model renderTarget

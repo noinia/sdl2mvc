@@ -152,11 +152,17 @@ toolBarWidth = 16
 -- fillColor = id
 
 
-
+myRectangles :: [Rectangle (Point 2 Double) :+ PathAttributes]
 myRectangles =
-  [ Rectangle origin (Point2 0.5 0.5)       :+ (def&pathColor .~ FillOnly (opaque red))
+  [ Rectangle origin (Point2 1 1)          :+ (def&pathColor .~ FillOnly (opaque red))
+
+  , Rectangle origin (Point2 0.5 0.5)       :+ (def&pathColor .~ FillOnly (opaque orange))
   , Rectangle (Point2 (-1) (-1)) origin :+ (def&pathColor .~ FillOnly (opaque blue))
   ]
+
+
+  -- [ Rectangle origin (Point2 0.5 0.5)       :+ (def&pathColor .~ FillOnly (opaque red))
+  -- ]
 
 myTriangles = [ Triangle origin (Point2 400 10) (Point2 430 30) :+
                 (def&pathColor .~ StrokeAndFill def (opaque orange))
@@ -365,9 +371,22 @@ myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: P
     Nothing -> liftIO $ print "cursor outside screen"
     Just p  -> do renderDrawingIn (screen^.target)
                     [ draw $ Blank (opaque white)
+                    -- , draw $ head myRectangles
+                    , draw $ Disk (origin :: Point 2 Double) 100 :+ (def&pathColor .~ FillOnly (opaque black))
                     , draw $ Disk p 4 :+ (def&pathColor .~ FillOnly (opaque green))
-                    , draw $ TextLabel "foo" :+ (def&location .~ Point2 100 100)
+
+                    , draw $ TextLabel "foo" (Point2 500 100) :+ (def @TextAttributes)
+                    , drawIn centeredVP $ TextLabel "origin" origin' :+ (def @TextAttributes)
+                    , drawIn centeredVP $ myRectangles
+                    --   tail myRectangles
+                    -- , drawIn centeredVP $ head myRectangles
                     ]
+
+  where
+    origin'  = origin :: Point 2 Double
+    centeredVP = traceShowWith ("centeredvp",) $
+      normalizedCenteredOrigin $ (/2) <$> screen^.target.viewPort.to size
+
 
 
       -- Cairo.setFontSize 20
