@@ -32,7 +32,7 @@ import           HGeometry.Transformation
 import           HGeometry.Triangle
 import           HGeometry.Vector
 import           HGeometry.Viewport
-import           Linear hiding (identity)
+import           Linear(V2(..))
 import qualified Linear.Affine as Linear
 import qualified SDL
 import           SDL2MVC.App
@@ -462,13 +462,20 @@ myUI' model screen = draw [ draw menuBar
 
     mainArea  = drawIn mainAreaVP  $ Blank (opaque white)
 
-    mainPanelVP = mkViewport (Rectangle (Point2 0              menuBarHeight)
-                                        (Point2 mainPanelWidth (h - footerHeight))
-                             ) identity
+    mainPanelVP = Viewport (Rectangle (Point2 0              menuBarHeight)
+                                      (Point2 mainPanelWidth (h - footerHeight))
+                           )
+                           (translation (Vector2 0 menuBarHeight))
 
-    mainAreaVP  = mkViewport (Rectangle (Point2 mainPanelWidth menuBarHeight)
-                                        (Point2 w (h-footerHeight))
-                             ) identity
+    mainAreaVP  = Viewport (Rectangle (Point2 mainPanelWidth menuBarHeight)
+                                      (Point2 w (h-footerHeight))
+                           ) flipY'
+      where
+        flipY' = translation (Vector2 mainPanelWidth
+                                     (h - menuBarHeight - footerHeight)
+                            ) |.| scaling (Vector2 1 (-1))
+        -- mathy coords :)
+
 
     menuBarHeight = 20
     footerHeight  = 20
