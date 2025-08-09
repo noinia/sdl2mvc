@@ -46,6 +46,8 @@ import           SDL2MVC.Send
 import           SDL2MVC.Updated
 import qualified Vary
 
+
+import           SDL2MVC.Renderable(Box(..))
 --------------------------------------------------------------------------------
 -- * Model
 
@@ -93,24 +95,31 @@ myHandler           :: forall es inMsgs outMsgs.
                        )
                     => Handler es MyModel outMsgs inMsgs
 myHandler model msg = case toEither msg of
-  Left e -> case SDL.eventPayload e of
-    SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
+    Left e -> case SDL.eventPayload e of
+      SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
 
-                                                in pure $ Changed (model&mousePosition ?~ p)
+                                                  in pure $ Changed (model&mousePosition ?~ p)
 
-    SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
-    SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
-
-
-    SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
-      SDL.Pressed -> Unchanged <$ sendMsg @outMsgs (AddLayer "dummy" (draw $ head myRectangles))
-      _           -> pure Unchanged
+      SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
+      SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
 
 
-    _                              -> pure Unchanged
-  Right (AddLayer name d) -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
+      SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
+        SDL.Pressed -> Unchanged <$ sendMsg @outMsgs (AddLayer "dummy" (draw myTri))
+        _           -> pure Unchanged
 
 
+      _                              -> pure Unchanged
+    Right (AddLayer name d) -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
+
+
+  where
+    myTri :: Triangle (Point 2 Double) :+ PathAttributes
+    myTri = scaleUniformlyBy 200 $
+      Triangle (Point2 (-0.5) (-0.5))
+                     (Point2 (0.5)  (-0.5))
+                     (Point2 0       0.5)
+            :+ (def&pathColor .~ StrokeAndFill def (opaque red))
 
 
 
@@ -366,17 +375,33 @@ data MyModel2 = MyModel2 { theText :: Text
 
 
 --------------------------------------------------------------------------------
+-- TODO: Move to HGeometry.Viewport
+
+-- | Create a viewport whose world-space is \([-1,1] \times [-1,1]\) whose origin is in
+-- the center of the screen (which is defined by the given input rectangle)
+normalizedCenteredOrigin       :: ( Fractional r, Rectangle_ rectangle point
+                                  , Point_ point 2 r
+                                  )
+                               => rectangle -> Viewport r
+normalizedCenteredOrigin rect = let Vector2 w h = size rect
+                                    s           = Vector2 (w/2) ((-1)*h/2)
+                                in mkViewport rect $ scaling s
+
+
+-- | Creates a viewport in which the origin at the top left of the viewport
+--
+-- (moreover, this does not flip the coordinate system, so in a typical graphics setup
+-- coordinates move downward)
+graphicsOrigin       :: ( Num r
+                        ) => Rectangle (Point 2 r) -> Viewport r
+graphicsOrigin rect' = Viewport rect' $
+                       (translation $ topLeft .-. origin) |.| scaling (Vector2 1 (-1))
+  where
+    Vector2 _ h = size rect'
+    topLeft     = (rect'^.minPoint)&yCoord +~ h
 
 --------------------------------------------------------------------------------
 
--- | Create a viewport whose world-space is \([-1,1] \times [-1,1]\) whose origin is in
--- the center of the screen, i.e. the rectangle \([0,w] \times [0,h]\)), which is given
--- by the input Vector w h
-normalizedCenteredOrigin       :: (Real r', Fractional r) => Vector 2 r' -> Viewport r
-normalizedCenteredOrigin dims' = let Vector2 w h = realToFrac <$> dims'
-                                     rect        = Rectangle origin (Point2 w h)
-                                     s           = Vector2 (w/2) ((-1)*h/2)
-                                 in mkViewport rect $ scaling s
 
 
 
@@ -435,10 +460,14 @@ textLabel   :: Text -> TextLabel
 textLabel t = TextLabel t origin
 
 myUI'              :: MyModel -> RenderTarget -> Drawing
-myUI' model screen = draw [ draw menuBar
-                          , mainSection
-                          , draw footer
-                          ]
+myUI' model screen = mainSection
+
+
+
+  -- draw [ draw menuBar
+  --                         , mainSection
+  --                         , draw footer
+  --                         ]
   where
     Vector2 w h = size $ screen^.target.viewPort
     menuBar = Rectangle origin                        (Point2 w menuBarHeight)
@@ -459,35 +488,28 @@ myUI' model screen = draw [ draw menuBar
                          ]
                   ]
 
+    mainArea  = drawIn mainAreaVP $
+                  [ draw $ Blank (opaque Colour.yellow)
+                  , foldMapOf (layers.traverse) drawLayer model
+                  ]
 
-    mainArea  = drawIn mainAreaVP  $ Blank (opaque white)
+    mainPanelVP = graphicsOrigin           $ Rect 0 menuBarHeight w mainHeight
+    -- mainAreaVP  = normalizedCenteredOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
+    mainAreaVP  = alignedOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
 
-    mainPanelVP = Viewport (Rectangle (Point2 0              menuBarHeight)
-                                      (Point2 mainPanelWidth (h - footerHeight))
-                           )
-                           (translation (Vector2 0 menuBarHeight))
-
-    mainAreaVP  = Viewport (Rectangle (Point2 mainPanelWidth menuBarHeight)
-                                      (Point2 w (h-footerHeight))
-                           ) flipY'
-      where
-        flipY' = translation (Vector2 mainPanelWidth
-                                     (h - menuBarHeight - footerHeight)
-                            ) |.| scaling (Vector2 1 (-1))
-        -- mathy coords :)
-
+    mainHeight = h-footerHeight-menuBarHeight
 
     menuBarHeight = 20
     footerHeight  = 20
 
-    mainPanelWidth = 100
+    mainPanelWidth = 200
 
     panelColor       = opaque $ sRGB24 249 250 251
     menuBarColor     = opaque $ sRGB24 74 84 100
     menuBarTextColor = opaque $ sRGB24 142 149 160
 
 rows :: [Drawing] -> Drawing
-rows = fold . snd . List.mapAccumL (\acc g -> (acc + 10, translateBy (Vector2 0 acc) g)) 0
+rows = fold . snd . List.mapAccumL (\acc g -> (acc + 20, translateBy (Vector2 0 acc) g)) 0
 
 --------------------------------------------------------------------------------
 

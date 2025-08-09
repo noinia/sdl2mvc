@@ -29,6 +29,8 @@ common setup
         -- , managed                 >= 1.0.10       && < 1.1
         , hgeometry-combinatorial >= 1.0          && < 1.1
         , hgeometry:kernel        >= 1.0          && < 1.1
+        , hgeometry:polygon
+        , hgeometry:polyLine
         , hgeometry:vector
         , hgeometry:point
         , semigroupoids           >= 6            && < 6.1
@@ -77,6 +79,8 @@ library
         SDL2MVC.Drawing.Text
         SDL2MVC.Drawing.Path
         SDL2MVC.Drawing.Color
+
+        SDL2MVC.Renderable
 
         SDL2MVC.Layer
 

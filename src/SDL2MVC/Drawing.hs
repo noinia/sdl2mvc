@@ -10,9 +10,6 @@ module SDL2MVC.Drawing
 
   , renderDrawingIn
   , Drawable(..)
-  , Renderable(..)
-
-
   , Color
 
   , module SDL2MVC.Drawing.Path
@@ -31,13 +28,14 @@ import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified GI.Cairo.Render as Cairo
-import qualified GI.Cairo.Render.Matrix as CairoM
 import           HGeometry.Ball
 import           HGeometry.Box
 import           HGeometry.Ellipse
 import           HGeometry.Ext
 import           HGeometry.Matrix
 import           HGeometry.Point
+import           HGeometry.PolyLine
+import           HGeometry.Polygon
 import           HGeometry.Properties
 import           HGeometry.Transformation
 import           HGeometry.Triangle
@@ -46,6 +44,7 @@ import           HGeometry.Viewport
 import           SDL2MVC.Drawing.Color
 import           SDL2MVC.Drawing.Path
 import           SDL2MVC.Drawing.Text
+import           SDL2MVC.Renderable
 import qualified Vary
 
 
@@ -57,12 +56,10 @@ import           Debug.Trace
 
 -- | The Main Drawing type
 newtype Drawing = Drawing (Seq.Seq (Vary.Vary DrawingElements))
-  deriving newtype (Show,Eq,Semigroup,Monoid,Renderable,IsTransformable)
+  deriving newtype (Show,Eq,Semigroup,Monoid,Renderable,Layoutable,IsTransformable)
 
 type instance Dimension Drawing = 2
 type instance NumType   Drawing = Double
-
-
 
 newtype Blank = Blank Color
   deriving (Show,Eq)
@@ -73,6 +70,10 @@ type instance NumType   Blank = Double
 
 instance IsTransformable Blank where
   transformBy _ = id
+
+instance Renderable Blank where
+  render dims@(Vector2 w h) (Blank c) = render dims $
+                                          Rect 0 0 w h :+ (def&pathColor .~ FillOnly c)
 
 type instance Dimension (Vary.Vary (t:ts)) = Dimension t
 type instance NumType   (Vary.Vary (t:ts)) = NumType t
@@ -106,15 +107,27 @@ instance IsTransformable g => IsTransformable (Seq.Seq g) where
   transformBy t = fmap (transformBy t)
 
 
-type DrawingElements = [ Rectangle (Point 2 Double) :+ PathAttributes
-                       , Ellipse Double             :+ PathAttributes
-                       , Triangle  (Point 2 Double) :+ PathAttributes
+type DrawingElements = [ Rectangle      (Point 2 Double) :+ PathAttributes
+                       , Ellipse Double                  :+ PathAttributes
+                       , Triangle       (Point 2 Double) :+ PathAttributes
+                       , SimplePolygon  (Point 2 Double) :+ PathAttributes
                        , Blank
                        , TextLabel :+ TextAttributes
                        ]
 
 draw' :: g Vary.:| DrawingElements => g -> Drawing
 draw' = Drawing . Seq.singleton . Vary.from
+
+
+
+
+
+
+
+
+
+
+
 
 --------------------------------------------------------------------------------
 
@@ -126,39 +139,46 @@ drawViewport vp = draw $ (vp^.viewPort) :+ (def @PathAttributes)
 -- | Given a drawing, draws it in the given viewport ; i.e. applies the appropriate
 -- transform
 --
-drawInViewport :: Viewport Double -> Drawing -> Drawing
-drawInViewport = toHostFrom
+drawInViewport      :: ( Drawable t, IsTransformable t
+                       , NumType t ~ Double, Dimension t ~ 2
 
+                       , Show t
+                       ) => Viewport Double -> t -> Drawing
+drawInViewport vp x = (<> drawViewport vp)
+                  . traceShowWith ("dIV",vp,"dr",x,"->",)
+                  . draw
+                  . toHostFrom vp
+                  $ x
 
 --------------------------------------------------------------------------------
 
+-- | Class of things that can be turned into an Drawing
 class Drawable t where
   -- | Given an object, construct a drawing out of it.
   draw :: t -> Drawing
 
-  -- | Given a viewport, and some some geometric object, specified in world coordinates,
-    -- constructs a drawing of the object in terms of *host* coordinates.
-  drawIn    :: Viewport Double -> t -> Drawing
-  drawIn vp = drawInViewport vp . draw
-
-
-
+instance Drawable Drawing where
+  draw = id
 instance Drawable t => Drawable [t] where
   draw = foldMap draw
 instance Drawable t => Drawable (Seq.Seq t) where
   draw = foldMap draw
-
 instance Drawable (Rectangle (Point 2 Double) :+ PathAttributes) where
   draw = draw'
 instance Drawable (Triangle (Point 2 Double) :+ PathAttributes) where
   draw = draw'
 instance Drawable (Ellipse Double :+ PathAttributes) where
   draw = draw'
+instance Drawable (SimplePolygon (Point 2 Double) :+ PathAttributes) where
+  draw = draw'
 instance Drawable (Disk (Point 2 Double) :+ PathAttributes) where
   draw (d :+ ats) = draw $ (d^._DiskCircle.re _EllipseCircle) :+ ats
-
 instance Drawable (TextLabel :+ TextAttributes) where
   draw = draw'
+instance Drawable Blank where
+  draw = draw'
+  -- drawIn vp (Blank c) = draw' $ (vp^.viewPort) :+ (def&pathColor .~ FillOnly c)
+
 
 -- instance Drawable (Disk (Point 2 Double) :+ PathAttributes) where
 --   drawIn _ = draw
@@ -170,157 +190,104 @@ instance Drawable (TextLabel :+ TextAttributes) where
 
 -- instance (Drawable g, Drawable (Vary.Vary gs)) => Drawable (Vary.Vary (g:gs)) where
 --   draw v = case Vary.pop v of
---                   Right g -> renderIn vp g
---                     Left v' -> renderIn vp v'
+--                   Right g -> render vp g
+--                     Left v' -> render vp v'
 
 
-instance Drawable Blank where
-  draw = draw'
+
+
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+
+class Layoutable t where
+  -- | constructs a drawing of the object in terms of *host* coordinates.
+  --
+  --
+  drawIn    :: Viewport Double -> t -> Drawing
+  -- drawIn vp = drawIn vp . draw
+
+
+instance Layoutable t => Layoutable [t] where
+  drawIn vp = foldMap (drawIn vp)
+
+instance Layoutable t => Layoutable (Seq.Seq t) where
+  drawIn vp = foldMap (drawIn vp)
+
+instance Layoutable (Vary.Vary '[]) where
+  drawIn _ = mempty
+
+instance (Layoutable t, Layoutable (Vary.Vary ts)) => Layoutable (Vary.Vary (t:ts)) where
+  drawIn vp v = case Vary.pop v of
+                  Right g -> drawIn vp g
+                  Left v' -> drawIn vp v'
+
+instance Layoutable (Rectangle (Point 2 Double) :+ PathAttributes) where
+  drawIn = drawInViewport
+
+  -- vp = draw . toHostFrom vp
+
+
+instance Layoutable (Triangle (Point 2 Double) :+ PathAttributes) where
+  drawIn = drawInViewport
+  -- drawIn vp = draw'
+
+instance Layoutable (Ellipse Double :+ PathAttributes) where
+  drawIn = drawInViewport
+  -- drawIn vp = draw'
+instance Layoutable (SimplePolygon (Point 2 Double) :+ PathAttributes) where
+  drawIn = drawInViewport
+  -- drawIn vp = draw'
+instance Layoutable (TextLabel :+ TextAttributes) where
+  drawIn = drawInViewport
+  -- drawIn vp = draw'
+instance Layoutable Blank where
   drawIn vp (Blank c) = draw' $ (vp^.viewPort) :+ (def&pathColor .~ FillOnly c)
 
-instance Drawable Drawing where
-  draw = id -- toHostIn vp
 
--- (vp^.viewPort) apply the transform
 
-renderDrawingIn      :: Drawable t => Viewport Double -> t -> Cairo.Render ()
-renderDrawingIn vp g = renderIn (vp^.viewPort) $ drawIn vp g
+-- instance Layoutable  where
+--   drawIn
 
--- instance Rectangle (Point 2 Double) :+ PathAttributes where
---   draw (r :+ ats) = rectangle ats r
+
+
+
+
+
+
+
+
+-- layoutDrawingIn :: Viewport Double -> Drawing -> Drawing
+-- layoutDrawingIn = undefined
+
+
+
+-- mostly a helper class for the various pieces of a
+
+
+
+
+
+
+
+
 
 --------------------------------------------------------------------------------
--- * Raw cairo renderers
 
-renderTextAt                  :: Real r => Point 2 r -> Text -> Cairo.Render ()
-renderTextAt (Point2 x y) txt = do Cairo.save
-                                   Cairo.translate (realToFrac x) (realToFrac y)
-                                   Cairo.showText txt
-                                   Cairo.restore
-
-toCairoMatrix   :: Real r => Matrix 3 3 r -> Cairo.Matrix
-toCairoMatrix m = case m&elements %~ realToFrac of
-  Matrix (Vector3
-          (Vector3 a b c)
-          (Vector3 d e f)
-          _
-         ) -> CairoM.Matrix a d b e c f
-
-renderIn'           :: Real r => Viewport r -> Cairo.Render () -> Cairo.Render ()
-renderIn' vp render = do
-                        Cairo.save
-                        Cairo.transform (vp^.worldToHost.transformationMatrix.to toCairoMatrix)
-                        render
-                        Cairo.restore
-
-
-setStroke s = do Cairo.setLineWidth $ s^.strokeWidth
-                 setColor $ s^.strokeColor
-
-
-withStrokeAndFill                 :: StrokeAndFillSpec -> Cairo.Render () -> Cairo.Render ()
-withStrokeAndFill spec renderPath = case spec of
-  StrokeOnly s      -> do setStroke s
-                          renderPath
-                          Cairo.stroke
-  FillOnly f        -> do setColor f
-                          renderPath
-                          Cairo.fill
-  StrokeAndFill s f -> do setColor f
-                          renderPath
-                          Cairo.fillPreserve
-                          setStroke s
-                          renderPath
-                          Cairo.stroke
-
-disk          :: (Point_ point 2 r, Real r)
-              => PathAttributes -> Disk point -> Cairo.Render ()
-disk ats disk = withStrokeAndFill (ats^.pathColor) $ do
-                   let Point2 x y = disk^.center.asPoint
-                                    & coordinates %~ realToFrac
-                       r          = realToFrac $ disk^.squaredRadius
-                   Cairo.arc x y (sqrt r) 0 (2*pi)
-
-
-ellipse          :: Real r
-                 => PathAttributes -> Ellipse r -> Cairo.Render ()
-ellipse ats e = withStrokeAndFill (ats^.pathColor) $ do
-                   Cairo.save
-                   Cairo.transform (e^.ellipseMatrix.to toCairoMatrix)
-                   Cairo.arc 0 0 1 0 (2*pi)
-                   Cairo.restore
-
-
-
-
-toRGBA col = ( toSRGB $ col `Data.Colour.over` black
-             , alphaChannel col
-             )
-
-setColor col = let (RGB r g b, a) = toRGBA col
-               in Cairo.setSourceRGBA r g b a
-
-rectangle          :: (Point_ point 2 r, Real r)
-                   => PathAttributes -> Rectangle point -> Cairo.Render ()
-rectangle ats rect = withStrokeAndFill (ats^.pathColor) $ do
-                        let Point2 x y  = rect^.minPoint.asPoint
-                                          & coordinates %~ realToFrac
-                            Vector2 w h = realToFrac <$> size rect
-                        Cairo.rectangle x y w h
-
-triangle         :: (Point_ point 2 r, Real r)
-                 => PathAttributes -> Triangle point -> Cairo.Render ()
-triangle ats tri = withStrokeAndFill (ats^.pathColor) $ do
-                      let Triangle a b c = toPoints tri
-                      Cairo.moveTo (a^.xCoord) (a^.yCoord)
-                      Cairo.lineTo (b^.xCoord) (b^.yCoord)
-                      Cairo.lineTo (c^.xCoord) (c^.yCoord)
-                      Cairo.closePath
-
-toPoints :: (Functor f, Point_ point 2 r, Real r) => f point -> f (Point 2 Double)
-toPoints = fmap (\p -> p^.asPoint &coordinates %~ realToFrac)
-
+-- | renders an object in the given viewport
+--
+--- pre : the viewport size is the screen size
+renderDrawingIn      :: Layoutable t => Viewport Double -> t -> Cairo.Render ()
+renderDrawingIn vp g = render (vp^.viewPort.to size) $ drawIn vp g
 
 --------------------------------------------------------------------------------
 -- * Renderable instances
 
-class Renderable t where
-  renderIn :: Rectangle (Point 2 Double) -> t -> Cairo.Render ()
-
-instance Renderable t => Renderable (Seq.Seq t) where
-  renderIn vp = traverse_ (renderIn vp)
-instance Renderable t => Renderable [t] where
-  renderIn vp = traverse_ (renderIn vp)
-
-
-instance Renderable (Vary.Vary '[]) where
-  renderIn _ _ = pure ()
-
-instance (Renderable g, Renderable (Vary.Vary gs)) => Renderable (Vary.Vary (g:gs)) where
-  renderIn vp v = case Vary.pop v of
-                    Right g -> renderIn vp g
-                    Left v' -> renderIn vp v'
-
-instance Renderable Blank where
-  renderIn vp (Blank c) = rectangle (def&pathColor .~ FillOnly c)
-                                    vp
-
-instance Renderable (TextLabel :+ TextAttributes) where
-  renderIn _ (TextLabel t p :+ ats) = do applyTextAttributes ats
-                                         renderTextAt p t
-
-applyTextAttributes     :: TextAttributes -> Cairo.Render ()
-applyTextAttributes ats = do setColor (ats^.textColor)
-                             Cairo.setFontSize (ats^.textSize)
-
-instance Renderable (Rectangle (Point 2 Double) :+ PathAttributes) where
-  renderIn _ (g :+ ats) = rectangle ats g
-
-instance Renderable (Triangle (Point 2 Double) :+ PathAttributes) where
-  renderIn _ (g :+ ats) = triangle ats g
-
-instance Renderable (Ellipse Double :+ PathAttributes) where
-  renderIn _ (g :+ ats) = ellipse ats g
-
-instance Renderable (Disk (Point 2 Double) :+ PathAttributes) where
-  renderIn _ (g :+ ats) = disk ats g
+-- | Given a drawing, we
