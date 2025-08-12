@@ -1,12 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 module SDL2MVC
   ( main
   ) where
 
-import           Control.Concurrent.Async (mapConcurrently_, withAsync, uninterruptibleCancel)
-import           Control.Concurrent.STM (atomically)
-import qualified Control.Concurrent.STM.TBQueue as Queue
+-- import           Control.Concurrent.Async (mapConcurrently_, withAsync, uninterruptibleCancel)
+-- import           Control.Concurrent.STM (atomically)
+-- import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens hiding (elements)
 import           Data.Colour
 import qualified Data.Colour as Colour
@@ -19,8 +20,10 @@ import           Data.Foldable (for_)
 import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
+import qualified Data.Text as Text
 import           Debug.Trace
 import           Effectful
+import           Effectful.Concurrent (Concurrent, threadDelay)
 import           GHC.Natural
 import qualified GI.Cairo.Render as Cairo
 import qualified GI.Cairo.Render.Matrix as CairoM
@@ -32,7 +35,7 @@ import           HGeometry.Transformation
 import           HGeometry.Triangle
 import           HGeometry.Vector
 import           HGeometry.Viewport
-import           Linear(V2(..))
+import           Linear (V2(..))
 import qualified Linear.Affine as Linear
 import qualified SDL
 import           SDL2MVC.App
@@ -47,7 +50,11 @@ import           SDL2MVC.Updated
 import qualified Vary
 
 
-import           SDL2MVC.Renderable(Box(..))
+import           SDL2MVC.Renderable (Box(..))
+
+
+import           System.IO.Unsafe (unsafePerformIO)
+
 --------------------------------------------------------------------------------
 -- * Model
 
@@ -73,10 +80,32 @@ defaultModel = MyModel { _mousePosition = Nothing
 --------------------------------------------------------------------------------
 -- * Controller
 
+
 data MyAction = AddLayer LayerName Drawing
               deriving (Show,Eq)
 
 -- data WithBasicActions = LoopAction RenderAction
+
+
+type MyMsgs = [MyAction, Animate MyModel, Render, SDL.Event, Shutdown]
+
+--------------------------------------------------------------------------------
+
+-- | Debug
+traceDraw        :: Drawable g
+                 => String
+                 -- ^ LayerNam e
+                 -> g -> g
+traceDraw name g = undefined -- unsafePerformIO $ runEff $ traceDraw' name g
+{-# NOINLINE traceDraw #-}
+-- TODO: we should get an IO op first, before we can unsafePerformIO it
+
+
+-- | Send a trace message
+traceDraw'        :: forall es g.
+                     (Send MyMsgs :> es, Drawable g)
+                  => String -> g -> Eff es ()
+traceDraw' name g = sendMsg @MyMsgs $ AddLayer (Text.pack name) (draw g)
 
 ----------------------------------------
 
