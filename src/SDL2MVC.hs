@@ -86,8 +86,7 @@ data MyAction = AddLayer LayerName Drawing
 
 -- data WithBasicActions = LoopAction RenderAction
 
-
-type MyMsgs = [MyAction, Animate MyModel, Render, SDL.Event, Shutdown]
+type MyMsgs = [Shutdown, Render, SDL.Event, MyAction]
 
 --------------------------------------------------------------------------------
 
@@ -115,10 +114,11 @@ toEither v = v&( Vary.on @l Left
                $ Vary.exhaustiveCase
                )
 
+
 -- myHandler          -- :: -- MyModel -> Vary '[SDL.Event, MyAction] -> Eff es (Updated MyModel)
 
 myHandler           :: forall es inMsgs outMsgs.
-                       ( inMsgs ~ [SDL.Event, MyAction]
+                       ( inMsgs  ~ [SDL.Event, MyAction]
                        , outMsgs ~ (Shutdown : Render : inMsgs)
                        , Send outMsgs :> es
                        )
@@ -139,31 +139,45 @@ myHandler model msg = case toEither msg of
 
 
       _                              -> pure Unchanged
-    Right (AddLayer name d) -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
+
+    Right msg -> case msg of
+      AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
+      -- Delay           ->
 
 
   where
-    myTri :: [Rectangle (Point 2 Double) :+ PathAttributes]
-    myTri = [Rect 0 0 200 400
-      -- scaleUniformlyBy 200 $
-      -- Triangle (Point2 (-0.5) (-0.5))
-      --                (Point2 (0.5)  (-0.5))
-      --                (Point2 0       0.5)
-            :+ (def&pathColor .~ StrokeAndFill def (opaque red))
-            , Rect 200 400 200 300
-            :+ (def&pathColor .~ StrokeAndFill def (opaque blue))
-            ]
+    myTri = case model^.mousePosition of
+              Nothing -> []
+              Just p  -> [ draw $ Disk ((p^.asPoint
+                                          & coordinates %~ realToFrac) :: Point 2 Double) 25
+                           :+ (def&pathColor .~ StrokeAndFill def (opaque red))
+                         ]
+
+      -- Disk (model^.mousePos)
+
+    -- myTri :: [Rectangle (Point 2 Double) :+ PathAttributes]
+    -- myTri = [Rect 0 0 200 400
+    --   -- scaleUniformlyBy 200 $
+    --   -- Triangle (Point2 (-0.5) (-0.5))
+    --   --                (Point2 (0.5)  (-0.5))
+    --   --                (Point2 0       0.5)
+    --         :+ (def&pathColor .~ StrokeAndFill def (opaque red))
+    --         , Rect 200 400 200 300
+    --         :+ (def&pathColor .~ StrokeAndFill def (opaque blue))
+    --         ]
 
 
-myHandler'           :: forall msgs inMsgs es.
-                        ( Send msgs :> es
-                       , IOE       :> es
-                       , msgs   ~ (Shutdown : inMsgs)
-                       , inMsgs ~ [Render, SDL.Event, MyAction]
-                       )
+myHandler'   :: forall msgs inMsgs es.
+                ( Send msgs :> es
+                , IOE       :> es
+                , msgs   ~ (Shutdown : inMsgs)
+                , inMsgs ~ [Render, SDL.Event, MyAction]
+                )
               => App es MyModel msgs inMsgs
               -> MyModel -> Vary inMsgs -> Eff es (Updated MyModel)
-myHandler' app = handleRender app $ withDefaultSDLEvents @msgs myHandler
+myHandler' app = --handleAnimate @msgs app
+                 handleRender app
+               $ withDefaultSDLEvents @msgs myHandler
 
 
 -- model = \case
@@ -517,7 +531,11 @@ myUI' model screen = draw [ draw menuBar
               Blank menuBarColor
 
     footer  = drawIn (alignedOrigin $ Rect 0 (h-footerHeight) w footerHeight) $
-              Blank menuBarColor
+              [ draw $ Blank menuBarColor
+              , draw $ TextLabel (Text.show $ model^.mousePosition) (Point2 5 20)
+                       :+ (def&textColor .~ opaque white)
+              ]
+
 
     mainSection = draw [ mainPanel
                        , mainArea
@@ -531,7 +549,7 @@ myUI' model screen = draw [ draw menuBar
                   ]
 
     mainArea  = drawIn mainAreaVP $
-                  [ draw $ Blank (opaque Colour.yellow)
+                  [ draw $ Blank (opaque white)
                   , foldMapOf (layers.traverse) drawLayer model
                   ]
 
