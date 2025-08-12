@@ -10,6 +10,7 @@ import qualified Data.Colour as Colour
 import           Data.Colour.Names (red,blue,white,green,orange)
 import           Data.Colour.SRGB (RGB(..), toSRGB)
 import           Data.Foldable
+import           Data.Foldable1
 import           Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
@@ -181,12 +182,21 @@ rectangle ats rect = withStrokeAndFill (ats^.pathColor) $ do
 -- | Render a triangle
 triangle         :: (Point_ point 2 r, Real r)
                  => PathAttributes -> Triangle point -> Cairo.Render ()
-triangle ats tri = polyLine ats tri >> Cairo.closePath
+triangle ats tri = polygon' ats (toNonEmpty tri)
 
 -- | Render a simple polygon
 polygon        :: (SimplePolygon_ simplePolygon point r, Point_ point 2 r, Real r)
                => PathAttributes -> simplePolygon -> Cairo.Render ()
-polygon ats pg = polyLine ats pg >> Cairo.closePath
+polygon ats pg = polygon' ats (toNonEmptyOf vertices pg)
+
+
+polygon' ats vs = withStrokeAndFill (ats^.pathColor) $
+                  case toPoints vs of
+                    (u :| vs) -> do Cairo.moveTo (u^.xCoord) (u^.yCoord)
+                                    for_ vs $ \v ->
+                                      Cairo.lineTo (v^.xCoord) (v^.yCoord)
+                                    Cairo.lineTo (u^.xCoord) (u^.yCoord)
+                                    Cairo.closePath
 
 -- | Render a polyLine
 polyLine        :: ( HasVertices polyLine polyLine
