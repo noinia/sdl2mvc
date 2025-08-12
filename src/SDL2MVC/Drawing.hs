@@ -144,11 +144,9 @@ drawInViewport      :: ( Drawable t, IsTransformable t
 
                        , Show t
                        ) => Viewport Double -> t -> Drawing
-drawInViewport vp x = (<> drawViewport vp)
-                  . traceShowWith ("dIV",vp,"dr",x,"->",)
-                  . draw
-                  . toHostFrom vp
-                  $ x
+drawInViewport vp = (<> drawViewport vp)
+                  . draw . toHostFrom vp
+
 
 --------------------------------------------------------------------------------
 

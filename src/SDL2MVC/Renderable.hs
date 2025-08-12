@@ -41,19 +41,10 @@ class Renderable t where
   render :: Vector 2 Double -> t -> Cairo.Render ()
 
 
-
-
-
-
-
-
-
-
 instance Renderable t => Renderable (Seq.Seq t) where
   render vp = traverse_ (render vp)
 instance Renderable t => Renderable [t] where
   render vp = traverse_ (render vp)
-
 
 instance Renderable (Vary.Vary '[]) where
   render _ _ = pure ()
@@ -63,11 +54,11 @@ instance (Renderable g, Renderable (Vary.Vary gs)) => Renderable (Vary.Vary (g:g
                   Right g -> render vp g
                   Left v' -> render vp v'
 
-
 instance Renderable (TextLabel :+ TextAttributes) where
   render _ (TextLabel t p :+ ats) = do applyTextAttributes ats
                                        renderTextAt p t
 
+-- | Sets the text attributes
 applyTextAttributes     :: TextAttributes -> Cairo.Render ()
 applyTextAttributes ats = do setColor (ats^.textColor)
                              Cairo.setFontSize (ats^.textSize)
@@ -108,32 +99,35 @@ rectXYWH rect = let Vector2 w h = size rect
 --------------------------------------------------------------------------------
 -- * Raw cairo renderers
 
+-- | Renders some text label at a given location
 renderTextAt                  :: Real r => Point 2 r -> Text -> Cairo.Render ()
 renderTextAt (Point2 x y) txt = do Cairo.save
                                    Cairo.translate (realToFrac x) (realToFrac y)
                                    Cairo.showText txt
                                    Cairo.restore
 
+-- | Convert a matrix into Cairo form.
 toCairoMatrix   :: Real r => Matrix 3 3 r -> Cairo.Matrix
 toCairoMatrix m = case m&elements %~ realToFrac of
   Matrix (Vector3
           (Vector3 a b c)
           (Vector3 d e f)
-          _
+          _     -- (Vector3 0 0 1) -- should be
          ) -> CairoM.Matrix a d b e c f
+  _        -> error "toCairoMatrix: Don't know how to convert this matrix!"
 
+-- | Render stuff within the given viewport
 render'           :: Real r => Viewport r -> Cairo.Render () -> Cairo.Render ()
-render' vp render = do
-                        Cairo.save
-                        Cairo.transform (vp^.worldToHost.transformationMatrix.to toCairoMatrix)
-                        render
-                        Cairo.restore
+render' vp render = do Cairo.save
+                       Cairo.transform (vp^.worldToHost.transformationMatrix.to toCairoMatrix)
+                       render
+                       Cairo.restore
 
-
+-- | Set the stroke
 setStroke s = do Cairo.setLineWidth $ s^.strokeWidth
                  setColor $ s^.strokeColor
 
-
+-- | Sets the stroke and fill approprately
 withStrokeAndFill                 :: StrokeAndFillSpec -> Cairo.Render () -> Cairo.Render ()
 withStrokeAndFill spec renderPath = case spec of
   StrokeOnly s      -> do setStroke s
@@ -149,6 +143,7 @@ withStrokeAndFill spec renderPath = case spec of
                           renderPath
                           Cairo.stroke
 
+-- | Renders a disk
 disk          :: (Point_ point 2 r, Real r)
               => PathAttributes -> Disk point -> Cairo.Render ()
 disk ats disk = withStrokeAndFill (ats^.pathColor) $ do
@@ -157,7 +152,7 @@ disk ats disk = withStrokeAndFill (ats^.pathColor) $ do
                        r          = realToFrac $ disk^.squaredRadius
                    Cairo.arc x y (sqrt r) 0 (2*pi)
 
-
+-- | Render an ellipse
 ellipse          :: Real r
                  => PathAttributes -> Ellipse r -> Cairo.Render ()
 ellipse ats e = withStrokeAndFill (ats^.pathColor) $ do
@@ -166,9 +161,8 @@ ellipse ats e = withStrokeAndFill (ats^.pathColor) $ do
                    Cairo.arc 0 0 1 0 (2*pi)
                    Cairo.restore
 
-
-
-
+-- | Extract an alphacolor into a tuple
+toRGBA     :: Color -> (RGB Double,Double)
 toRGBA col = ( toSRGB $ col `Data.Colour.over` black
              , alphaChannel col
              )
@@ -184,23 +178,25 @@ rectangle ats rect = withStrokeAndFill (ats^.pathColor) $ do
                             Vector2 w h = realToFrac <$> size rect
                         Cairo.rectangle x y w h
 
+-- | Render a triangle
 triangle         :: (Point_ point 2 r, Real r)
                  => PathAttributes -> Triangle point -> Cairo.Render ()
-triangle ats tri = withStrokeAndFill (ats^.pathColor) $ do
-                      let Triangle a b c = toPoints tri
-                      Cairo.moveTo (a^.xCoord) (a^.yCoord)
-                      Cairo.lineTo (b^.xCoord) (b^.yCoord)
-                      Cairo.lineTo (c^.xCoord) (c^.yCoord)
-                      Cairo.closePath
+triangle ats tri = polyLine ats tri >> Cairo.closePath
 
+-- | Render a simple polygon
 polygon        :: (SimplePolygon_ simplePolygon point r, Point_ point 2 r, Real r)
                => PathAttributes -> simplePolygon -> Cairo.Render ()
-polygon ats pg = withStrokeAndFill (ats^.pathColor) $
-                 case toPoints $ toNonEmptyOf vertices pg of
-                   (u :| vs) -> do Cairo.moveTo (u^.xCoord) (u^.yCoord)
-                                   for_ vs $ \v ->
-                                     Cairo.lineTo (v^.xCoord) (v^.yCoord)
-                                   Cairo.closePath
+polygon ats pg = polyLine ats pg >> Cairo.closePath
+
+-- | Render a polyLine
+polyLine        :: ( HasVertices polyLine polyLine
+                   , Vertex polyLine ~ point, Point_ point 2 r, Real r)
+                => PathAttributes -> polyLine -> Cairo.Render ()
+polyLine ats pg = withStrokeAndFill (ats^.pathColor) $
+                    case toPoints $ toNonEmptyOf vertices pg of
+                      (u :| vs) -> do Cairo.moveTo (u^.xCoord) (u^.yCoord)
+                                      for_ vs $ \v ->
+                                        Cairo.lineTo (v^.xCoord) (v^.yCoord)
 
 
 toPoints :: (Functor f, Point_ point 2 r, Real r) => f point -> f (Point 2 Double)
