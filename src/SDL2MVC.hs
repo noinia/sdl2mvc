@@ -5,9 +5,6 @@ module SDL2MVC
   ( main
   ) where
 
--- import           Control.Concurrent.Async (mapConcurrently_, withAsync, uninterruptibleCancel)
--- import           Control.Concurrent.STM (atomically)
--- import qualified Control.Concurrent.STM.TBQueue as Queue
 import           Control.Lens hiding (elements)
 import           Data.Colour
 import qualified Data.Colour as Colour
@@ -18,6 +15,7 @@ import           Data.Default.Class
 import           Data.Foldable
 import           Data.Foldable (for_)
 import qualified Data.List as List
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified Data.Text as Text
@@ -49,6 +47,10 @@ import           SDL2MVC.Send
 import           SDL2MVC.Updated
 import qualified Vary
 
+import           HGeometry.ConvexHull
+import           HGeometry.Polygon.Convex
+import           HGeometry.Polygon
+
 
 import           SDL2MVC.Renderable (Box(..))
 
@@ -58,14 +60,13 @@ import           System.IO.Unsafe (unsafePerformIO)
 --------------------------------------------------------------------------------
 -- * Model
 
-
-
-
-
-
+type R = Double
 
 data MyModel = MyModel { _mousePosition :: !(Maybe (Linear.Point V2 Int))
                        , _layers        :: Seq.Seq Layer
+                       , _mainViewPort  :: Viewport R
+                       , _nextLayerName :: NonEmpty.NonEmpty LayerName
+                       , _points        :: [Point 2 R]
                        }
              deriving (Show,Eq)
 
@@ -74,8 +75,14 @@ makeLenses ''MyModel
 defaultModel :: MyModel
 defaultModel = MyModel { _mousePosition = Nothing
                        , _layers        = mempty
+                       , _mainViewPort  = graphicsOrigin
+                                        $ Rect mainPanelWidth menuBarHeight w (mainHeight h)
+                       , _nextLayerName = NonEmpty.fromList
+                                        $ cycle ["alpha","beta","gamma","delta"]
+                       , _points        = mempty
                        }
-
+  where
+    V2 w h = realToFrac <$> def @AppSettings ^.windowConfig.to SDL.windowInitialSize
 
 --------------------------------------------------------------------------------
 -- * Controller
@@ -83,8 +90,6 @@ defaultModel = MyModel { _mousePosition = Nothing
 
 data MyAction = AddLayer LayerName Drawing
               deriving (Show,Eq)
-
--- data WithBasicActions = LoopAction RenderAction
 
 type MyMsgs = [Shutdown, Render, SDL.Event, MyAction]
 
@@ -115,7 +120,14 @@ toEither v = v&( Vary.on @l Left
                )
 
 
+asPoint'   :: (Point_ point 2 r, Real r) => point -> Point 2 R
+asPoint' p = p^.asPoint & coordinates %~ realToFrac
+
 -- myHandler          -- :: -- MyModel -> Vary '[SDL.Event, MyAction] -> Eff es (Updated MyModel)
+
+takeNextLayer model = ( NonEmpty.head $ model^.nextLayerName
+                      , model&nextLayerName %~ NonEmpty.fromList . NonEmpty.tail
+                      )
 
 myHandler           :: forall es inMsgs outMsgs.
                        ( inMsgs  ~ [SDL.Event, MyAction]
@@ -126,34 +138,29 @@ myHandler           :: forall es inMsgs outMsgs.
 myHandler model msg = case toEither msg of
     Left e -> case SDL.eventPayload e of
       SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
-
-                                                  in pure $ Changed (model&mousePosition ?~ p)
+                                        in pure $ Changed (model&mousePosition ?~ p)
 
       SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
       SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
 
-
       SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
-        SDL.Pressed -> Unchanged <$ sendMsg @outMsgs (AddLayer "dummy" (draw myTri))
-        _           -> pure Unchanged
+        SDL.Pressed -> case asPoint' <$> model^.mousePosition of
+                         Nothing -> pure Unchanged
+                         Just p'  -> let (nextLayer,model') = takeNextLayer model
+                                         p                  = traceShowWith ("P",) $
+                                           toWorldIn (model^.mainViewPort) p'
+                                         disk = Disk p 25
+                                              :+ (def&pathColor .~ StrokeAndFill def (opaque red))
+                                     in Changed (model'&points %~ (p:))
+                                        <$ sendMsg @outMsgs (AddLayer nextLayer (draw disk))
 
+        _           -> pure Unchanged
 
       _                              -> pure Unchanged
 
     Right msg -> case msg of
       AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
       -- Delay           ->
-
-
-  where
-    myTri = case model^.mousePosition of
-              Nothing -> []
-              Just p  -> [ draw $ Disk ((p^.asPoint
-                                          & coordinates %~ realToFrac) :: Point 2 Double) 25
-                           :+ (def&pathColor .~ StrokeAndFill def (opaque red))
-                         ]
-
-      -- Disk (model^.mousePos)
 
     -- myTri :: [Rectangle (Point 2 Double) :+ PathAttributes]
     -- myTri = [Rect 0 0 200 400
@@ -201,11 +208,6 @@ myHandler' app = --handleAnimate @msgs app
 --------------------------------------------------------------------------------
 -- * View
 
-
-headerHeight = 10
-footerHeight = 20
-
-paneWidth    = 100
 toolBarWidth = 16
 
 
@@ -424,10 +426,10 @@ data MyModel2 = MyModel2 { theText :: Text
 
 -- | Create a viewport whose world-space is \([-1,1] \times [-1,1]\) whose origin is in
 -- the center of the screen (which is defined by the given input rectangle)
-normalizedCenteredOrigin       :: ( Fractional r, Rectangle_ rectangle point
-                                  , Point_ point 2 r
-                                  )
-                               => rectangle -> Viewport r
+normalizedCenteredOrigin      :: ( Fractional r, Rectangle_ rectangle point
+                                 , Point_ point 2 r
+                                 )
+                              => rectangle -> Viewport r
 normalizedCenteredOrigin rect = let Vector2 w h = size rect
                                     s           = Vector2 (w/2) ((-1)*h/2)
                                 in mkViewport rect $ scaling s
@@ -543,7 +545,10 @@ myUI' model screen = draw [ draw menuBar
 
     mainPanel = drawIn mainPanelVP $
                   [ draw $ Blank panelColor
-                  , rows [ draw $ textLabel (l^.layerName) :+ (def @TextAttributes)
+                  , rows [ button (def&pathColor .~ StrokeAndFill def (opaque red))
+                                  [ draw $ textLabel (l^.layerName)
+                                    :+ (def &textColor .~ opaque white)
+                                  ]
                          | l <- model^..layers.traverse
                          ]
                   ]
@@ -551,25 +556,46 @@ myUI' model screen = draw [ draw menuBar
     mainArea  = drawIn mainAreaVP $
                   [ draw $ Blank (opaque white)
                   , foldMapOf (layers.traverse) drawLayer model
+                  , draw theHull
                   ]
 
-    mainPanelVP = alignedOrigin $ Rect 0 menuBarHeight w mainHeight
+    mainPanelVP = alignedOrigin $ Rect 0 menuBarHeight w (mainHeight h)
     -- mainAreaVP  = normalizedCenteredOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
-    mainAreaVP  = graphicsOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
+    mainAreaVP  = model^.mainViewPort
 
-    mainHeight = h-footerHeight-menuBarHeight
+    theHull = case (do pts@(_ NonEmpty.:| _:_) <- NonEmpty.nonEmpty (model^.points)
+                       let ch = convexHull pts
+                       fromPoints (toNonEmptyOf outerBoundary ch))
+                        :: Maybe (SimplePolygon (Point 2 Double))
+                   of
+                Nothing -> []
+                Just ch -> [ draw $ ch :+ (def&pathColor .~ StrokeAndFill def (red `withOpacity` 0.5))
+                           ]
 
-    menuBarHeight = 20
-    footerHeight  = 200
+mainHeight h = h-footerHeight-menuBarHeight
 
-    mainPanelWidth = 200
+menuBarHeight = 20
+footerHeight  = 200
 
-    panelColor       = opaque $ sRGB24 249 250 251
-    menuBarColor     = opaque $ sRGB24 74 84 100
-    menuBarTextColor = opaque $ sRGB24 142 149 160
+mainPanelWidth = 200
+
+panelColor       = opaque $ sRGB24 249 250 251
+menuBarColor     = opaque $ sRGB24 74 84 100
+menuBarTextColor = opaque $ sRGB24 142 149 160
 
 rows :: [Drawing] -> Drawing
 rows = fold . snd . List.mapAccumL (\acc g -> (acc + 20, translateBy (Vector2 0 acc) g)) 0
+
+--------------------------------------------------------------------------------
+
+button             :: PathAttributes
+                   -> [Drawing]
+                   -> Drawing
+button ats content = draw [ draw $ rect :+ ats
+                          , drawIn (normalizedCenteredOrigin rect) content
+                          ]
+  where
+    rect = Rect 0 0 mainPanelWidth 20
 
 --------------------------------------------------------------------------------
 
