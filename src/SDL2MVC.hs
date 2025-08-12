@@ -2,10 +2,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module SDL2MVC
-  ( main
+  ( module SDL2MVC.App
+  , module SDL2MVC.Framework
+  , module SDL2MVC.Send
+  , module SDL2MVC.Updated
+  , module SDL2MVC.Render
+  , module SDL2MVC.Drawing
+
+  , defaultModel -- TODO: define these in app instead
+  , myHandler'   -- TODO: define these in app instead
+  , myDraw       -- TODO: define these in app instead
+
+  -- * Re-exports
+  , module Data.Default.Class
+  , module Effectful
   ) where
 
 import           Control.Lens hiding (elements)
+import           Data.Bifunctor
 import           Data.Colour
 import qualified Data.Colour as Colour
 import           Data.Colour.Names (red,blue,white,green,orange)
@@ -95,29 +109,8 @@ type MyMsgs = [Shutdown, Render, SDL.Event, MyAction]
 
 --------------------------------------------------------------------------------
 
--- | Debug
-traceDraw        :: Drawable g
-                 => String
-                 -- ^ LayerNam e
-                 -> g -> g
-traceDraw name g = undefined -- unsafePerformIO $ runEff $ traceDraw' name g
-{-# NOINLINE traceDraw #-}
--- TODO: we should get an IO op first, before we can unsafePerformIO it
-
-
--- | Send a trace message
-traceDraw'        :: forall es g.
-                     (Send MyMsgs :> es, Drawable g)
-                  => String -> g -> Eff es ()
-traceDraw' name g = sendMsg @MyMsgs $ AddLayer (Text.pack name) (draw g)
-
 ----------------------------------------
 
-toEither   :: forall l r. Vary.Vary [l,r] -> Either l r
-toEither v = v&( Vary.on @l Left
-               $ Vary.on @r Right
-               $ Vary.exhaustiveCase
-               )
 
 
 asPoint'   :: (Point_ point 2 r, Real r) => point -> Point 2 R
@@ -135,8 +128,8 @@ myHandler           :: forall es inMsgs outMsgs.
                        , Send outMsgs :> es
                        )
                     => Handler es MyModel outMsgs inMsgs
-myHandler model msg = case toEither msg of
-    Left e -> case SDL.eventPayload e of
+myHandler model msg = case first Vary.intoOnly $ Vary.pop msg of
+  Right e -> case SDL.eventPayload e of
       SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
                                         in pure $ Changed (model&mousePosition ?~ p)
 
@@ -158,8 +151,8 @@ myHandler model msg = case toEither msg of
 
       _                              -> pure Unchanged
 
-    Right msg -> case msg of
-      AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
+  Left act -> case act of
+                AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
       -- Delay           ->
 
     -- myTri :: [Rectangle (Point 2 Double) :+ PathAttributes]
@@ -213,9 +206,6 @@ toolBarWidth = 16
 
 
 
--- -- | draw on SDL texture with Render monad from Cairo
--- withCairoTexture     :: SDL.Texture -> Render () -> IO ()
--- withCairoTexture t m = withCairoTexture' t (\s -> renderWith s m)
 
 
 
@@ -606,17 +596,3 @@ button ats content = draw [ draw $ rect :+ ats
 flipY'   :: ( Num r
             ) => r -> Transformation 2 r
 flipY' h = translation (Vector2 0 h) |.| scaling (Vector2 1 (-1))
-
-
-
---------------------------------------------------------------------------------
-
-main :: IO ()
-main = runEff $ runApp $
-       AppConfig
-         { _appModel        = defaultModel
-         , _handler         = myHandler'
-         , _initialMessages = []
-         , _appRender       = myDraw
-         , _settings        = def&windowTitle .~ "Demo"
-         }
