@@ -10,6 +10,8 @@ import           Data.Text (Text)
 --------------------------------------------------------------------------------
 -- * Model
 
+{-
+
 type R = Double
 
 data Model = Model { _mousePosition :: !(Maybe (Linear.Point V2 Int))
@@ -55,7 +57,7 @@ controller = undefined
 
 render = undefined
 
-
+-}
 --------------------------------------------------------------------------------
 
 
