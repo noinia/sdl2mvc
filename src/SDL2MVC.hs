@@ -11,12 +11,6 @@ module SDL2MVC
   , Render(..), Shutdown(..)
   , Handler
 
-  -- , withDefaultHandlers
-
-  -- , defaultModel -- TODO: define these in app instead
-  -- , controller
-  -- , myDraw       -- TODO: define these in app instead
-
   , Box(..), graphicsOrigin, normalizedCenteredOrigin
 
   -- * Re-exports
@@ -77,89 +71,14 @@ import           SDL2MVC.Renderable (Box(..))
 
 import           System.IO.Unsafe (unsafePerformIO)
 
---------------------------------------------------------------------------------
--- * Model
-type R = Double
-data Model = Model { _mousePosition :: !(Maybe (Linear.Point V2 Int))
-                       , _layers        :: Seq.Seq Layer
-                       , _mainViewPort  :: Viewport R
-                       , _nextLayerName :: NonEmpty.NonEmpty LayerName
-                       , _points        :: [Point 2 R]
-                       }
-             deriving (Show,Eq)
-
-makeLenses ''Model
-
-defaultModel :: Model
-defaultModel = Model { _mousePosition = Nothing
-                       , _layers        = mempty
-                       , _mainViewPort  = graphicsOrigin
-                                        $ Rect mainPanelWidth menuBarHeight w (mainHeight h)
-                       , _nextLayerName = NonEmpty.fromList
-                                        $ cycle ["alpha","beta","gamma","delta"]
-                       , _points        = mempty
-                       }
-  where
-    V2 w h = realToFrac <$> def @AppSettings ^.windowConfig.to SDL.windowInitialSize
-
---------------------------------------------------------------------------------
--- * Controller
-
-
-data MyAction = AddLayer LayerName Drawing
-              deriving (Show,Eq)
-
-type MyMsgs = [Shutdown, Render, SDL.Event, MyAction]
-
-
-controller           :: forall es inMsgs outMsgs.
-                       ( inMsgs  ~ [SDL.Event, MyAction]
-                       , outMsgs ~ (Shutdown : Render : inMsgs)
-                       , Send outMsgs :> es
-                       )
-                     => Handler es Model outMsgs inMsgs
-controller model msg = case first Vary.intoOnly $ Vary.pop msg of
-  Right e -> case SDL.eventPayload e of
-      SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
-                                        in pure $ Changed (model&mousePosition ?~ p)
-
-      SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
-      SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
-
-      SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
-        SDL.Pressed -> case asPoint' <$> model^.mousePosition of
-                         Nothing -> pure Unchanged
-                         Just p'  -> let (nextLayer,model') = takeNextLayer model
-                                         p                  = traceShowWith ("P",) $
-                                           toWorldIn (model^.mainViewPort) p'
-                                         disk = Disk p 25
-                                              :+ (def&pathColor .~ StrokeAndFill def (opaque red))
-                                     in Changed (model'&points %~ (p:))
-                                        <$ sendMsg @outMsgs (AddLayer nextLayer (draw disk))
-
-        _           -> pure Unchanged
-
-      _                              -> pure Unchanged
-
-  Left act -> case act of
-                AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
-
-
-
---------------------------------------------------------------------------------
 
 ----------------------------------------
 
-
-
-asPoint'   :: (Point_ point 2 r, Real r) => point -> Point 2 R
+asPoint'   :: (Point_ point 2 r, Real r) => point -> Point 2 Double
 asPoint' p = p^.asPoint & coordinates %~ realToFrac
 
 -- myHandler          -- :: -- Model -> Vary '[SDL.Event, MyAction] -> Eff es (Updated Model)
 
-takeNextLayer model = ( NonEmpty.head $ model^.nextLayerName
-                      , model&nextLayerName %~ NonEmpty.fromList . NonEmpty.tail
-                      )
 
 
     -- myTri :: [Rectangle (Point 2 Double) :+ PathAttributes]
@@ -457,18 +376,6 @@ graphicsOrigin rect = Viewport rect
 
                                      -- (Point2 (realToFrac w) (realToFrac h))
 
-myDraw              :: Model -> View es msgs
-myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: Point 2 Double))
-                           <$> model^.mousePosition of
-    Nothing -> liftIO $ print "cursor outside screen"
-    Just p  -> do renderDrawingIn (screen^.target)
-                    [ draw $ Blank (opaque white) -- background
-                    , myUI' model screen
-                    , cursor p
-                    ]
-
-  where
-    cursor p = draw $ Disk p 4 :+ (def&pathColor .~ FillOnly (opaque green))
 
                     -- -- , draw $ head myRectangles
                     -- , draw $ Disk (origin :: Point 2 Double) 100 :+ (def&pathColor .~ FillOnly (opaque black))
@@ -508,80 +415,6 @@ myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: P
 textLabel   :: Text -> TextLabel
 textLabel t = TextLabel t origin
 
-myUI'              :: Model -> RenderTarget -> Drawing
-myUI' model screen = draw [ draw menuBar
-                          , mainSection
-                          , draw footer
-                          ]
-  where
-    Vector2 w h = size $ screen^.target.viewPort
-    menuBar = drawIn (alignedOrigin $ Rect 0 0 w menuBarHeight) $
-              Blank menuBarColor
-
-    footer  = drawIn (alignedOrigin $ Rect 0 (h-footerHeight) w footerHeight) $
-              [ draw $ Blank menuBarColor
-              , draw $ TextLabel (Text.show $ model^.mousePosition) (Point2 5 20)
-                       :+ (def&textColor .~ opaque white)
-              ]
-
-
-    mainSection = draw [ mainPanel
-                       , mainArea
-                       ]
-
-    mainPanel = drawIn mainPanelVP $
-                  [ draw $ Blank panelColor
-                  , rows [ button (def&pathColor .~ StrokeAndFill def (opaque red))
-                                  [ draw $ textLabel (l^.layerName)
-                                    :+ (def &textColor .~ opaque white)
-                                  ]
-                         | l <- model^..layers.traverse
-                         ]
-                  ]
-
-    mainArea  = drawIn mainAreaVP $
-                  [ draw $ Blank (opaque white)
-                  , foldMapOf (layers.traverse) drawLayer model
-                  , draw theHull
-                  ]
-
-    mainPanelVP = alignedOrigin $ Rect 0 menuBarHeight w (mainHeight h)
-    -- mainAreaVP  = normalizedCenteredOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
-    mainAreaVP  = model^.mainViewPort
-
-    theHull = case (do pts@(_ NonEmpty.:| _:_) <- NonEmpty.nonEmpty (model^.points)
-                       let ch = convexHull pts
-                       fromPoints (toNonEmptyOf outerBoundary ch))
-                        :: Maybe (SimplePolygon (Point 2 Double))
-                   of
-                Nothing -> []
-                Just ch -> [ draw $ ch :+ (def&pathColor .~ StrokeAndFill def (red `withOpacity` 0.5))
-                           ]
-
-mainHeight h = h-footerHeight-menuBarHeight
-
-menuBarHeight = 20
-footerHeight  = 200
-
-mainPanelWidth = 200
-
-panelColor       = opaque $ sRGB24 249 250 251
-menuBarColor     = opaque $ sRGB24 74 84 100
-menuBarTextColor = opaque $ sRGB24 142 149 160
-
-rows :: [Drawing] -> Drawing
-rows = fold . snd . List.mapAccumL (\acc g -> (acc + 20, translateBy (Vector2 0 acc) g)) 0
-
---------------------------------------------------------------------------------
-
-button             :: PathAttributes
-                   -> [Drawing]
-                   -> Drawing
-button ats content = draw [ draw $ rect :+ ats
-                          , drawIn (normalizedCenteredOrigin rect) content
-                          ]
-  where
-    rect = Rect 0 0 mainPanelWidth 20
 
 --------------------------------------------------------------------------------
 

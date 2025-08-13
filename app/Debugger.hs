@@ -53,6 +53,10 @@ controller :: forall es inMsgs outMsgs.
            => Handler es Model outMsgs inMsgs
 controller = undefined
 
+takeNextLayer model = ( NonEmpty.head $ model^.nextLayerName
+                      , model&nextLayerName %~ NonEmpty.fromList . NonEmpty.tail
+                      )
+
 --------------------------------------------------------------------------------
 
 render = undefined
