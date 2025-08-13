@@ -8,10 +8,16 @@ module SDL2MVC
   , module SDL2MVC.Updated
   , module SDL2MVC.Render
   , module SDL2MVC.Drawing
+  , Render(..), Shutdown(..)
+  , Handler
 
-  , defaultModel -- TODO: define these in app instead
-  , myHandler'   -- TODO: define these in app instead
-  , myDraw       -- TODO: define these in app instead
+  -- , withDefaultHandlers
+
+  -- , defaultModel -- TODO: define these in app instead
+  -- , controller
+  -- , myDraw       -- TODO: define these in app instead
+
+  , Box(..), graphicsOrigin, normalizedCenteredOrigin
 
   -- * Re-exports
   , module Data.Default.Class
@@ -73,10 +79,8 @@ import           System.IO.Unsafe (unsafePerformIO)
 
 --------------------------------------------------------------------------------
 -- * Model
-
 type R = Double
-
-data MyModel = MyModel { _mousePosition :: !(Maybe (Linear.Point V2 Int))
+data Model = Model { _mousePosition :: !(Maybe (Linear.Point V2 Int))
                        , _layers        :: Seq.Seq Layer
                        , _mainViewPort  :: Viewport R
                        , _nextLayerName :: NonEmpty.NonEmpty LayerName
@@ -84,10 +88,10 @@ data MyModel = MyModel { _mousePosition :: !(Maybe (Linear.Point V2 Int))
                        }
              deriving (Show,Eq)
 
-makeLenses ''MyModel
+makeLenses ''Model
 
-defaultModel :: MyModel
-defaultModel = MyModel { _mousePosition = Nothing
+defaultModel :: Model
+defaultModel = Model { _mousePosition = Nothing
                        , _layers        = mempty
                        , _mainViewPort  = graphicsOrigin
                                         $ Rect mainPanelWidth menuBarHeight w (mainHeight h)
@@ -107,28 +111,14 @@ data MyAction = AddLayer LayerName Drawing
 
 type MyMsgs = [Shutdown, Render, SDL.Event, MyAction]
 
---------------------------------------------------------------------------------
 
-----------------------------------------
-
-
-
-asPoint'   :: (Point_ point 2 r, Real r) => point -> Point 2 R
-asPoint' p = p^.asPoint & coordinates %~ realToFrac
-
--- myHandler          -- :: -- MyModel -> Vary '[SDL.Event, MyAction] -> Eff es (Updated MyModel)
-
-takeNextLayer model = ( NonEmpty.head $ model^.nextLayerName
-                      , model&nextLayerName %~ NonEmpty.fromList . NonEmpty.tail
-                      )
-
-myHandler           :: forall es inMsgs outMsgs.
+controller           :: forall es inMsgs outMsgs.
                        ( inMsgs  ~ [SDL.Event, MyAction]
                        , outMsgs ~ (Shutdown : Render : inMsgs)
                        , Send outMsgs :> es
                        )
-                    => Handler es MyModel outMsgs inMsgs
-myHandler model msg = case first Vary.intoOnly $ Vary.pop msg of
+                     => Handler es Model outMsgs inMsgs
+controller model msg = case first Vary.intoOnly $ Vary.pop msg of
   Right e -> case SDL.eventPayload e of
       SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
                                         in pure $ Changed (model&mousePosition ?~ p)
@@ -153,7 +143,24 @@ myHandler model msg = case first Vary.intoOnly $ Vary.pop msg of
 
   Left act -> case act of
                 AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
-      -- Delay           ->
+
+
+
+--------------------------------------------------------------------------------
+
+----------------------------------------
+
+
+
+asPoint'   :: (Point_ point 2 r, Real r) => point -> Point 2 R
+asPoint' p = p^.asPoint & coordinates %~ realToFrac
+
+-- myHandler          -- :: -- Model -> Vary '[SDL.Event, MyAction] -> Eff es (Updated Model)
+
+takeNextLayer model = ( NonEmpty.head $ model^.nextLayerName
+                      , model&nextLayerName %~ NonEmpty.fromList . NonEmpty.tail
+                      )
+
 
     -- myTri :: [Rectangle (Point 2 Double) :+ PathAttributes]
     -- myTri = [Rect 0 0 200 400
@@ -167,17 +174,6 @@ myHandler model msg = case first Vary.intoOnly $ Vary.pop msg of
     --         ]
 
 
-myHandler'   :: forall msgs inMsgs es.
-                ( Send msgs :> es
-                , IOE       :> es
-                , msgs   ~ (Shutdown : inMsgs)
-                , inMsgs ~ [Render, SDL.Event, MyAction]
-                )
-              => App es MyModel msgs inMsgs
-              -> MyModel -> Vary inMsgs -> Eff es (Updated MyModel)
-myHandler' app = --handleAnimate @msgs app
-                 handleRender app
-               $ withDefaultSDLEvents @msgs myHandler
 
 
 -- model = \case
@@ -369,11 +365,11 @@ myUI _ = Section []
 
 
 
-data MyModel2 = MyModel2 { theText :: Text
+data Model2 = Model2 { theText :: Text
                          , theInt  :: Int
                          }
 
--- myUI :: UserInterface (Dynamic MyModel2) msg
+-- myUI :: UserInterface (Dynamic Model2) msg
 -- myUI = Section (Constant [])
 --                (Constant [ Constant $ TextNode (Constant "foo")
 --                          , Constant $ TextNode (Dynamic theText)
@@ -461,7 +457,7 @@ graphicsOrigin rect = Viewport rect
 
                                      -- (Point2 (realToFrac w) (realToFrac h))
 
-myDraw              :: MyModel -> View es msgs
+myDraw              :: Model -> View es msgs
 myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: Point 2 Double))
                            <$> model^.mousePosition of
     Nothing -> liftIO $ print "cursor outside screen"
@@ -512,7 +508,7 @@ myDraw model screen = case (\p -> ((p^.asPoint)&coordinates %~ fromIntegral :: P
 textLabel   :: Text -> TextLabel
 textLabel t = TextLabel t origin
 
-myUI'              :: MyModel -> RenderTarget -> Drawing
+myUI'              :: Model -> RenderTarget -> Drawing
 myUI' model screen = draw [ draw menuBar
                           , mainSection
                           , draw footer
