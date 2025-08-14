@@ -96,6 +96,9 @@ instance Default AppSettings where
 --------------------------------------------------------------------------------
 
 -- | A raw SDL2MVC App
+
+-- fixme: shouldn't msgs and inMsgs be the same?
+
 data App es model msgs inMsgs =
      App { _config          :: AppConfig es model msgs inMsgs
          , _windowRef       :: SDL.Window

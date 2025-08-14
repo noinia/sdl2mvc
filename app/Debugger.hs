@@ -58,17 +58,23 @@ data Action = AddLayer LayerName Drawing
 type Messages = [Shutdown, Render, SDL.Event, Action]
 
 
--- -- | Handlers some default events already
--- withDefaultHandlers             :: forall msgs inMsgs msgs' es model.
---                                    ( Send msgs :> es
---                                    , IOE       :> es
---                                    , msgs   ~ (Shutdown : inMsgs)
---                                    , inMsgs ~ [Render, SDL.Event, Action]
---                                    )
---                                 =>App  es Model msgs inMsgs
---                                 -> Model -> Vary inMsgs -> Eff es (Updated Model)
--- withDefaultHandlers app = handleRender app
---                         $ withDefaultSDLEvents @msgs controller
+-- | Handlers some default events already
+myHandler             :: forall msgs inMsgs msgs' es model.
+                                   ( Send msgs :> es
+                                   , IOE       :> es
+                                   , msgs   ~ (Shutdown : inMsgs)
+                                   , inMsgs ~ [Render, SDL.Event, Action]
+                                   )
+                                =>App  es Model msgs inMsgs
+                                -> Model -> Vary inMsgs -> Eff es (Updated Model)
+myHandler app = handleRender rendererData
+              $ withDefaultSDLEvents @msgs controller
+  where
+    rendererData = RendererData (app^.rendererRef) (app^.textureRef) (app^.config.appRender)
+
+-- myHandler :: App es Model Messages Messages
+--           -> Handler es Model Messages Messages
+-- myHandler = withDefaultHandlers controller
 
 controller           :: forall es inMsgs msgs.
                         ( msgs    ~ (Shutdown : Render : inMsgs)
@@ -216,7 +222,7 @@ main :: IO ()
 main = runEff $ runApp $
        AppConfig
          { _appModel        = defaultModel
-         , _handler         = withDefaultHandlers controller
+         , _handler         = myHandler
          , _initialMessages = []
          , _appRender       = myDraw
          , _settings        = def&windowTitle .~ "HGeometry Debugger"
