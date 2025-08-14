@@ -62,6 +62,11 @@ getModel (Extended app) = _appModel . _config $ app
 
 
 -- |  Configuration data for the App
+--
+-- es     :: The effects used in the handler
+-- model  :: The model data of this app
+-- msgs   :: The messages that this app can send
+-- inMsgs :: The messages that this app can receive (handle)
 data AppConfig (es :: [Effect]) model (msgs :: [Type]) (inMsgs :: [Type]) =
   AppConfig { _appModel        :: model
             , _handler         :: App es model msgs inMsgs

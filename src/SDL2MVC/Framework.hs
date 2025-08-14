@@ -41,9 +41,9 @@ maxQueueSize = 1000
 --------------------------------------------------------------------------------
 
 -- | Main entrypoint. Runs an SDL2MV app given by the appConfig
-runApp :: ( es ~ Send msgs : Resource : Concurrent : os
+runApp :: forall es os msgs inMsgs msgs' model.
+          ( es ~ Send msgs : Concurrent : os
           , IOE :> os
-
 
           , msgs   ~ (Shutdown : inMsgs)
           , inMsgs ~ (Render : SDL.Event : msgs')
@@ -51,16 +51,21 @@ runApp :: ( es ~ Send msgs : Resource : Concurrent : os
        => AppConfig es model msgs inMsgs
        -> Eff os ()
 runApp = flip withSDLApp runApp'
+  -- where
+  --   runApp'' :: App es model msgs inMsgs -> Eff (Concurrent : os) ()
+  --   runApp'' = runApp
+
 
 --------------------------------------------------------------------------------
 
 -- | Initialize the app
-withSDLApp          :: ( es ~ Send msg : Resource : Concurrent : os
+withSDLApp          :: forall es msg os model inMsgs.
+                       ( es ~ Send msg : Concurrent : os
                        , IOE :> os
                        )
                     => AppConfig es model msg inMsgs
                     -- ^ The configuration describing how to set up our application
-                    -> (App es model msg inMsgs -> Eff (Resource : Concurrent : os) ())
+                    -> (App es model msg inMsgs -> Eff (Concurrent : os) ())
                     -- ^ the continuation; i.e. the actual application
                     -> Eff os ()
 withSDLApp appCfg withApp = do
@@ -81,13 +86,17 @@ withSDLApp appCfg withApp = do
                               mapM_ (writeTBQueue q) (appCfg^.initialMessages)
                               pure q
 
+
+    let withApp' :: App es model msg inMsgs -> Eff (Resource : Concurrent : os) ()
+        withApp' = inject . withApp
+
     -- run the actuall application
-    withApp $ App { _config      = appCfg
-                  , _windowRef   = window'
-                  , _rendererRef = renderer'
-                  , _textureRef  = texture'
-                  , _eventQueue  = queue
-                  }
+    withApp' $ App { _config      = appCfg
+                   , _windowRef   = window'
+                   , _rendererRef = renderer'
+                   , _textureRef  = texture'
+                   , _eventQueue  = queue
+                   }
 
 
 -- | Handles some of the default events, in particular closing the window and quitting
@@ -115,20 +124,23 @@ interleaved xs ys = case xs of
 
 
 -- | Runs the app
-runApp'     :: forall os es model msgs inMsgs msgs'.
-               ( es ~ Send msgs : os
+runApp'     :: forall es os model msgs inMsgs msgs'.
+               ( es ~ Send msgs : Concurrent : os
+                 -- Send msgs :> es
+               -- , Subset os es
+
                , IOE        :> os
-               , Concurrent :> os
-               , Resource   :> os
+               -- , Concurrent :> os
 
                , msgs   ~ (Shutdown : inMsgs)
                , inMsgs ~ (Render : SDL.Event : msgs')
                )
             => App es model msgs inMsgs
-            -> Eff os ()
+            -> Eff (Concurrent : os) ()
 runApp' app = runSendWith queue $ go (app^.config.appModel)
   where
     queue        = app^.eventQueue
+
 
     -- not the type msgs', sicne we've already handled shutdown
     handleAction           :: model -> Vary.Vary inMsgs -> Eff es (Updated model)
