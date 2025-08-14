@@ -1,4 +1,4 @@
--# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
@@ -54,34 +54,20 @@ defaultModel = Model { _mousePosition = Nothing
 data Action = AddPoint
             deriving (Show,Eq)
 
-type Msgs = [Shutdown, Render, SDL.Event, Action]
+type Msgs = [SDL.Event, Action]
 
 
--- | Handlers some default events already
-withDefaultHandlers             :: forall msgs inMsgs msgs' es model.
-                                   ( Send msgs :> es
-                                   , IOE       :> es
-                                   , msgs   ~ (Shutdown : inMsgs)
-                                   , inMsgs ~ [Render, SDL.Event, Action]
-                                   )
-                                =>App  es Model msgs inMsgs
-                                -> Model -> Vary inMsgs -> Eff es (Updated Model)
-withDefaultHandlers app = handleRender app
-                        $ withDefaultSDLEvents @msgs controller
-
-controller           :: forall es inMsgs outMsgs.
-                       ( inMsgs  ~ [SDL.Event, Action]
-                       , outMsgs ~ (Shutdown : Render : inMsgs)
-                       , Send outMsgs :> es
+controller           :: forall es.
+                       ( Send' Model Msgs :> es
                        )
-                     => Handler es Model outMsgs inMsgs
+                     => Handler es Model (All Model Msgs) Msgs
 controller model msg = case first Vary.intoOnly $ Vary.pop msg of
   Right e -> case SDL.eventPayload e of
       SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
                                         in pure $ Changed (model&mousePosition ?~ p)
 
-      SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @outMsgs Render
-      SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @outMsgs Render
+      SDL.WindowShownEvent _         -> Unchanged <$ sendMsg @(All Model Msgs) Render
+      SDL.WindowExposedEvent _       -> Unchanged <$ sendMsg @(All Model Msgs) Render
 
       SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
         SDL.Pressed -> case asPoint' <$> model^.mousePosition of
@@ -93,6 +79,9 @@ controller model msg = case first Vary.intoOnly $ Vary.pop msg of
       _                              -> pure Unchanged
 
   Left act -> pure Unchanged
+
+    -- case act of
+    --             AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
 
 
 
@@ -199,7 +188,7 @@ main :: IO ()
 main = runEff $ SDL2MVC.runApp $
        AppConfig
          { _appModel        = defaultModel
-         , _handler         = withDefaultHandlers
+         , _handler         = const controller
          , _initialMessages = []
          , _appRender       = myDraw
          , _settings        = def&windowTitle .~ "Demo"
