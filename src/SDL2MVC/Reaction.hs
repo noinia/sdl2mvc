@@ -1,7 +1,10 @@
 module SDL2MVC.Reaction
-  ( Handler
+  ( Handler, All
   , Shutdown(..)
   , Render(..)
+
+  , Animate(..)
+  , Continue(..)
   ) where
 --------------------------------------------------------------------------------
 
@@ -30,6 +33,10 @@ import qualified Vary
 type Handler es model (msgs :: [Type]) inMsgs =
   model -> Vary.Vary inMsgs -> Eff es (Updated model)
 
+-- | Represents all sendable messages; i.e. includes the one that the framework will already take
+-- care of
+type All model msgs = (Shutdown : Render : Animate model : msgs)
+
 --------------------------------------------------------------------------------
 -- * Actions used in SDLApp
 
@@ -37,3 +44,8 @@ data Shutdown = Shutdown
 
 data Render = Render
   deriving (Show,Eq)
+
+data Continue = Stop | Continue
+  deriving (Show,Eq,Bounded)
+
+newtype Animate model = Animate (model -> Continue)

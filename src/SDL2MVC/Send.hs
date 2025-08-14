@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module SDL2MVC.Send
-  ( Send
+  ( Send, Send'
   , sendMsg
   , SendMessage
   , sendMessage
@@ -13,9 +13,11 @@ import           Effectful
 import           Effectful.Concurrent.STM
 import           Effectful.Dispatch.Dynamic
 import qualified Effectful.Dispatch.Dynamic as Eff
+import           SDL2MVC.Reaction (All)
 import qualified Vary
-
 --------------------------------------------------------------------------------
+
+type Send' model (msgs :: [Type]) = Send (All model msgs)
 
 type Send (msgs :: [Type]) = SendMessage (Vary.Vary msgs)
 

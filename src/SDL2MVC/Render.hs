@@ -3,8 +3,6 @@ module SDL2MVC.Render
   ( handleRender
   , RendererData(..)
 
-  , Animate(..)
-  , Continue(..)
   , handleAnimate
   ) where
 
@@ -62,11 +60,6 @@ runRenderWith (RendererData renderer texture render) model = do
 --------------------------------------------------------------------------------
 
 
-data Continue = Stop | Continue
-  deriving (Show,Eq,Bounded)
-
-newtype Animate model = Animate (model -> Continue)
-
 
 frameRate = 60
 
@@ -77,19 +70,18 @@ fromFrameRate rate = 1_000_000 `div` rate
 -- | Handles a render action
 --
 --
-handleAnimate          :: forall msgs es model inMsgs inMsgs'.
+handleAnimate          :: forall msgs es model.
                           ( Concurrent   :> es
-                          , Send msgs :> es
-                          , Render Vary.:| msgs
-                          , Animate model Vary.:| msgs
+                          , Send' model msgs :> es
                           )
-                       => Handler es model msgs inMsgs'
-                       -> Handler es model msgs (Animate model : inMsgs')
+                       => Handler es model (All model msgs) msgs
+                       -> Handler es model (All model msgs) (Animate model : msgs)
 handleAnimate handler' = \model msg -> case Vary.pop msg of
     Right (Animate shouldContinue) -> Unchanged <$
-                                      do sendMsg @msgs Render
+                                      do sendMsg @(All model msgs) Render
                                          case shouldContinue model of
                                            Stop     -> pure ()
                                            Continue -> do threadDelay (fromFrameRate frameRate)
-                                                          sendMsg @msgs $ Animate shouldContinue
+                                                          sendMsg @(All model msgs) $
+                                                            Animate shouldContinue
     Left msg'    -> handler' model msg'

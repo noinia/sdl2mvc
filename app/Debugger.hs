@@ -55,33 +55,31 @@ defaultModel = Model { _mousePosition = Nothing
 data Action = AddLayer LayerName Drawing
             deriving (Show,Eq)
 
-type Messages = [Shutdown, Render, SDL.Event, Action]
+type Messages = [SDL.Event, Action]
 
 
--- | Handlers some default events already
-myHandler             :: forall msgs inMsgs msgs' es model.
-                                   ( Send msgs :> es
-                                   , IOE       :> es
-                                   , msgs   ~ (Shutdown : inMsgs)
-                                   , inMsgs ~ [Render, SDL.Event, Action]
-                                   )
-                                =>App  es Model msgs inMsgs
-                                -> Model -> Vary inMsgs -> Eff es (Updated Model)
-myHandler app = handleRender rendererData
-              $ withDefaultSDLEvents @msgs controller
-  where
-    rendererData = RendererData (app^.rendererRef) (app^.textureRef) (app^.config.appRender)
+-- -- | Handlers some default events already
+-- myHandler             :: forall msgs msgs' es model.
+--                                    ( Send msgs :> es
+--                                    , IOE       :> es
+--                                    , msgs ~ [SDL.Event, Action]
+--                                    )
+--                                 => App es Model msgs
+--                                 -> Model -> Vary msgs -> Eff es (Updated Model)
+-- myHandler app = handleRender rendererData
+--               $ withDefaultSDLEvents @msgs controller
+--   where
+--     rendererData = RendererData (app^.rendererRef) (app^.textureRef) (app^.config.appRender)
 
 -- myHandler :: App es Model Messages Messages
 --           -> Handler es Model Messages Messages
 -- myHandler = withDefaultHandlers controller
 
 controller           :: forall es inMsgs msgs.
-                        ( msgs    ~ (Shutdown : Render : inMsgs)
-                        , inMsgs  ~ [SDL.Event, Action]
-                        , Send msgs :> es
+                        ( msgs  ~ [SDL.Event, Action]
+                        , Send' Model msgs :> es
                         )
-                     => Handler es Model msgs inMsgs
+                     => Handler es Model (All Model msgs) msgs
 controller model msg = case first Vary.intoOnly $ Vary.pop msg of
   Right e -> case SDL.eventPayload e of
       SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
@@ -92,7 +90,7 @@ controller model msg = case first Vary.intoOnly $ Vary.pop msg of
                          Nothing -> pure Unchanged
                          Just p' -> do let p              = toWorldIn (model^.mainViewPort) p'
                                            (layer,model') = takeNextLayer model
-                                       sendMsg @msgs $ AddLayer layer (drawPt p)
+                                       sendMsg @(All Model msgs) $ AddLayer layer (drawPt p)
                                        pure $ Changed model'
         _           -> pure Unchanged
 
@@ -222,7 +220,7 @@ main :: IO ()
 main = runEff $ runApp $
        AppConfig
          { _appModel        = defaultModel
-         , _handler         = myHandler
+         , _handler         = const controller
          , _initialMessages = []
          , _appRender       = myDraw
          , _settings        = def&windowTitle .~ "HGeometry Debugger"

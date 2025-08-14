@@ -8,7 +8,7 @@ module SDL2MVC.App
   , AppSettings(..)
   , HasAppSettings(..)
 
-  , Extended(Ex)
+  -- , Extended(Ex)
 
   , App(..)
   , config, windowRef, rendererRef, textureRef, eventQueue
@@ -17,6 +17,8 @@ module SDL2MVC.App
   , Vary.Vary
 
   , RenderTarget(RenderTarget), targetTexture, target
+
+  , All
   ) where
 
 import qualified Control.Concurrent.STM.TBQueue as Queue
@@ -47,32 +49,30 @@ makeLenses ''RenderTarget
 type View (es :: [Effect]) (msgs :: [Type]) = RenderTarget -> Cairo.Render () -- Eff es ()
 
 
-data Extended model where
-  -- ^ Extended hides the underlying app.
-  Extended :: App es model msgs inMsgs -> Extended model
+-- data Extended model where
+--   -- ^ Extended hides the underlying app.
+--   Extended :: App es model msgs inMsgs -> Extended model
 
--- | Pattern to match on the model
-pattern Ex       :: model -> Extended model
-pattern Ex model <- (getModel -> model)
+-- -- | Pattern to match on the model
+-- pattern Ex       :: model -> Extended model
+-- pattern Ex model <- (getModel -> model)
 
 
-getModel                :: Extended model -> model
-getModel (Extended app) = _appModel . _config $ app
-
+-- getModel                :: Extended model -> model
+-- getModel (Extended app) = _appModel . _config $ app
 
 
 -- |  Configuration data for the App
 --
--- es     :: The effects used in the handler
--- model  :: The model data of this app
--- msgs   :: The messages that this app can send
--- inMsgs :: The messages that this app can receive (handle)
-data AppConfig (es :: [Effect]) model (msgs :: [Type]) (inMsgs :: [Type]) =
+-- es    :: The effects used in the handler
+-- model :: The model data of this app
+-- msgs :: The messages that this app can receive (handle)
+data AppConfig (es :: [Effect]) model (msgs :: [Type]) =
   AppConfig { _appModel        :: model
-            , _handler         :: App es model msgs inMsgs
-                               -> model -> Vary.Vary inMsgs -> Eff es (Updated model)
-            , _initialMessages :: [Vary.Vary msgs]
-            , _appRender       :: model -> View es msgs
+            , _handler         :: App es model msgs
+                               -> Handler es model (All model msgs) msgs
+            , _initialMessages :: [Vary.Vary (All model msgs)]
+            , _appRender       :: model -> View es (All model msgs)
             , _settings        :: !AppSettings
             }
 
@@ -99,12 +99,12 @@ instance Default AppSettings where
 
 -- fixme: shouldn't msgs and inMsgs be the same?
 
-data App es model msgs inMsgs =
-     App { _config          :: AppConfig es model msgs inMsgs
+data App es model msgs =
+     App { _config          :: AppConfig es model msgs
          , _windowRef       :: SDL.Window
          , _rendererRef     :: SDL.Renderer
          , _textureRef      :: SDL.Texture
-         , _eventQueue      :: Queue.TBQueue (Vary.Vary msgs)
+         , _eventQueue      :: Queue.TBQueue (Vary.Vary (All model msgs))
           -- ^ the event queue we are using
          }
 
@@ -118,5 +118,5 @@ makeLenses ''App
 
 
 
-instance HasAppSettings (AppConfig es model msgs inMsgs) where
+instance HasAppSettings (AppConfig es model msgs) where
   appSettings = settings

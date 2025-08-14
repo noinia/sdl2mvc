@@ -41,15 +41,14 @@ maxQueueSize = 1000
 
 --------------------------------------------------------------------------------
 
--- | Main entrypoint. Runs an SDL2MV app given by the appConfig
-runApp :: forall es os msgs inMsgs msgs' model.
-          ( es ~ Send msgs : Concurrent : os
-          , IOE :> os
 
-          , msgs   ~ (Shutdown : inMsgs)
-          , inMsgs ~ (Render : SDL.Event : msgs')
+-- | Main entrypoint. Runs an SDL2MV app given by the appConfig
+runApp :: forall es os msgs msgs' model.
+          ( es ~ Send' model msgs : Concurrent : os
+          , IOE :> os
+          , msgs ~ (SDL.Event : msgs')
           )
-       => AppConfig es model msgs inMsgs
+       => AppConfig es model msgs
        -> Eff os ()
 runApp = flip withSDLApp runApp'
   -- where
@@ -60,13 +59,13 @@ runApp = flip withSDLApp runApp'
 --------------------------------------------------------------------------------
 
 -- | Initialize the app
-withSDLApp          :: forall es msg os model inMsgs.
-                       ( es ~ Send msg : Concurrent : os
+withSDLApp          :: forall es msgs os model.
+                       ( es ~ Send' model msgs : Concurrent : os
                        , IOE :> os
                        )
-                    => AppConfig es model msg inMsgs
+                    => AppConfig es model msgs
                     -- ^ The configuration describing how to set up our application
-                    -> (App es model msg inMsgs -> Eff (Concurrent : os) ())
+                    -> (App es model msgs -> Eff (Concurrent : os) ())
                     -- ^ the continuation; i.e. the actual application
                     -> Eff os ()
 withSDLApp appCfg withApp = do
@@ -88,7 +87,7 @@ withSDLApp appCfg withApp = do
                               pure q
 
 
-    let withApp' :: App es model msg inMsgs -> Eff (Resource : Concurrent : os) ()
+    let withApp' :: App es model msgs -> Eff (Resource : Concurrent : os) ()
         withApp' = inject . withApp
 
     -- run the actuall application
@@ -100,24 +99,23 @@ withSDLApp appCfg withApp = do
                    }
 
 -- | Runs the app
-runApp'     :: forall es os model msgs inMsgs msgs'.
-               ( es ~ Send msgs : os
+runApp'     :: forall es os model msgs msgs'.
+               ( es ~ Send' model msgs : os
                , IOE        :> os
+               , Concurrent :> es
                , Concurrent :> os
-
-               , msgs   ~ (Shutdown : inMsgs)
-               , inMsgs ~ (Render : SDL.Event : msgs')
+               , msgs ~ (SDL.Event : msgs')
                )
-            => App es model msgs inMsgs
+            => App es model msgs
             -> Eff os ()
 runApp' app = runSendWith queue $ go (app^.config.appModel)
   where
     queue        = app^.eventQueue
 
-
-    -- not the type msgs', sicne we've already handled shutdown
-    handleAction           :: model -> Vary.Vary inMsgs -> Eff es (Updated model)
-    handleAction model msg = (app^.config.handler) app model msg
+    -- note that we have already handled shutdown messages, so just Render : msgs is what is left
+    handleAction           :: model -> Vary.Vary (Render : Animate model : msgs)
+                           -> Eff es (Updated model)
+    handleAction model msg = withDefaultHandlers ((app^.config.handler) app) app model msg
 
     -- | The main app loop; we essentially get the current sdl events and the current
     -- app events, and handle them in an interlaving manner. When we've handled
@@ -132,15 +130,17 @@ runApp' app = runSendWith queue $ go (app^.config.appModel)
               handleAll m $ interleaved sdlEvents appEvents
     -- | handleAll does the actual event handling, whereas the go function collects the
     -- events to run.
-    handleAll       :: model -> [Vary.Vary msgs] -> Eff es ()
+    handleAll       :: model -> [Vary.Vary (All model msgs)] -> Eff es ()
     handleAll model = \case
       []     -> go model
       e:evts -> case Vary.pop e of
         Right Shutdown -> pure ()
         Left msg       -> handleAction model msg >>= \case
           Unchanged      -> handleAll model  evts
-          Changed model' -> do sendMsg @msgs Render
+          Changed model' -> do sendMsg @(All model msgs) Render
                                handleAll model' evts
+
+
 
 --------------------------------------------------------------------------------
 
@@ -170,33 +170,34 @@ interleaved xs ys = case xs of
 --------------------------------------------------------------------------------
 
 -- | Handlers some default events already
-withDefaultHandlers             :: forall msgs inMsgs msgs' es model.
-                                   ( Send msgs :> es
-                                   , IOE       :> es
-
-                                   , msgs   ~ (Shutdown : Render : inMsgs)
-                                   , inMsgs ~ (SDL.Event : msgs')
+withDefaultHandlers             :: forall msgs msgs' es model.
+                                   ( Send' model msgs :> es
+                                   , IOE        :> es
+                                   , Concurrent :> es
+                                   , msgs ~ (SDL.Event : msgs')
                                    )
-                                   => Handler es model msgs inMsgs
-                                   -> App  es model msgs inMsgs
-                                   -> Handler es model msgs (Render : inMsgs)
+                                   => Handler es model (All model msgs) msgs
+                                   -> App  es model msgs
+                                   -> Handler es model (All model msgs)
+                                                       (Render : Animate model : msgs)
 withDefaultHandlers controller app = handleRender rendererData
-                                   $ withDefaultSDLEvents @msgs controller
+                                   $ handleAnimate
+                                   $ withDefaultSDLEvents @(All model msgs) controller
   where
     rendererData = RendererData (app^.rendererRef) (app^.textureRef) (app^.config.appRender)
 
 
 -- | Handles some of the default events, in particular closing the window and quitting
-withDefaultSDLEvents          :: forall msgs inMsgs es model.
-                                 ( Send msgs :> es
-                                 , Shutdown :| msgs
+withDefaultSDLEvents          :: forall allMsgs inMsgs es model.
+                                 ( Send allMsgs :> es
+                                 , Shutdown :| allMsgs
                                  , SDL.Event :| inMsgs
                                  )
-                              => Handler es model msgs inMsgs
-                              -> Handler es model msgs inMsgs
+                              => Handler es model allMsgs inMsgs
+                              -> Handler es model allMsgs inMsgs
 withDefaultSDLEvents handler' = \model msg -> case Vary.into @SDL.Event msg of
     Just e  -> case SDL.eventPayload e of
-                 SDL.WindowClosedEvent _ -> Unchanged <$ sendMsg @msgs Shutdown
-                 SDL.QuitEvent           -> Unchanged <$ sendMsg @msgs Shutdown
+                 SDL.WindowClosedEvent _ -> Unchanged <$ sendMsg @allMsgs Shutdown
+                 SDL.QuitEvent           -> Unchanged <$ sendMsg @allMsgs Shutdown
                  _                       -> handler' model msg
     Nothing -> handler' model msg
