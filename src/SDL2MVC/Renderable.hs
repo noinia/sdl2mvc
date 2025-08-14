@@ -70,6 +70,9 @@ instance Renderable (Rectangle (Point 2 Double) :+ PathAttributes) where
 instance Renderable (SimplePolygon (Point 2 Double) :+ PathAttributes) where
   render _ (g :+ ats) = polygon ats g
 
+instance Renderable (PolyLine (Point 2 Double) :+ PathAttributes) where
+  render _ (g :+ ats) = polyLine ats g
+
 instance Renderable (Triangle (Point 2 Double) :+ PathAttributes) where
   render _ (g :+ ats) = triangle ats g
 
@@ -172,13 +175,13 @@ polygon        :: (SimplePolygon_ simplePolygon point r, Point_ point 2 r, Real 
 polygon ats pg = polygon' ats (toNonEmptyOf vertices pg)
 
 
-polygon' ats vs = withStrokeAndFill (ats^.pathColor) $
-                  case toPoints vs of
-                    (u :| vs) -> do Cairo.moveTo (u^.xCoord) (u^.yCoord)
-                                    for_ vs $ \v ->
-                                      Cairo.lineTo (v^.xCoord) (v^.yCoord)
-                                    Cairo.lineTo (u^.xCoord) (u^.yCoord)
-                                    Cairo.closePath
+polygon' ats vs0 = withStrokeAndFill (ats^.pathColor) $
+                   case toPoints vs0 of
+                     (u :| vs) -> do Cairo.moveTo (u^.xCoord) (u^.yCoord)
+                                     for_ vs $ \v ->
+                                       Cairo.lineTo (v^.xCoord) (v^.yCoord)
+                                     Cairo.lineTo (u^.xCoord) (u^.yCoord)
+                                     Cairo.closePath
 
 -- | Render a polyLine
 polyLine        :: ( HasVertices polyLine polyLine

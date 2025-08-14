@@ -35,6 +35,7 @@ import           HGeometry.Ext
 import           HGeometry.Matrix
 import           HGeometry.Point
 import           HGeometry.PolyLine
+import           HGeometry.LineSegment
 import           HGeometry.Polygon
 import           HGeometry.Properties
 import           HGeometry.Transformation
@@ -111,6 +112,7 @@ type DrawingElements = [ Rectangle      (Point 2 Double) :+ PathAttributes
                        , Ellipse Double                  :+ PathAttributes
                        , Triangle       (Point 2 Double) :+ PathAttributes
                        , SimplePolygon  (Point 2 Double) :+ PathAttributes
+                       , PolyLine       (Point 2 Double) :+ PathAttributes
                        , Blank
                        , TextLabel :+ TextAttributes
                        ]
@@ -173,8 +175,14 @@ instance Drawable (Disk (Point 2 Double) :+ PathAttributes) where
   draw (d :+ ats) = draw $ (d^._DiskCircle.re _EllipseCircle) :+ ats
 instance Drawable (TextLabel :+ TextAttributes) where
   draw = draw'
+instance Drawable (PolyLine (Point 2 Double) :+ PathAttributes) where
+  draw = draw'
+instance Drawable (ClosedLineSegment (Point 2 Double) :+ PathAttributes) where
+  draw (seg :+ ats) = draw $ ((seg^.re _PolyLineLineSegment) :: PolyLine (Point 2 Double)) :+ ats
 instance Drawable Blank where
   draw = draw'
+
+
   -- drawIn vp (Blank c) = draw' $ (vp^.viewPort) :+ (def&pathColor .~ FillOnly c)
 
 
@@ -242,7 +250,8 @@ instance Layoutable (Ellipse Double :+ PathAttributes) where
   -- drawIn vp = draw'
 instance Layoutable (SimplePolygon (Point 2 Double) :+ PathAttributes) where
   drawIn = drawInViewport
-  -- drawIn vp = draw'
+instance Layoutable (PolyLine (Point 2 Double) :+ PathAttributes) where
+  drawIn = drawInViewport
 instance Layoutable (TextLabel :+ TextAttributes) where
   drawIn = drawInViewport
   -- drawIn vp = draw'

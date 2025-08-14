@@ -17,6 +17,7 @@ import           HGeometry.Ball
 import           HGeometry.ConvexHull
 import           HGeometry.Ext
 import           HGeometry.Polygon
+import           HGeometry.LineSegment
 import           HGeometry.Transformation
 import           HGeometry.Viewport
 import           Linear (V2(..))
@@ -33,6 +34,8 @@ type R = Double
 data Model = Model { _mousePosition :: !(Maybe (Linear.Point V2 Int))
                    , _mainViewPort  :: Viewport R
                    , _points        :: [Point 2 R]
+                   , _path          :: ClosedLineSegment (Point 2 R)
+                   , _time          :: R
                    }
            deriving (Show,Eq)
 
@@ -43,6 +46,8 @@ defaultModel = Model { _mousePosition = Nothing
                      , _mainViewPort  = graphicsOrigin
                                       $ Rect mainPanelWidth menuBarHeight w (mainHeight h)
                      , _points        = mempty
+                     , _time          = 0
+                     , _path          = ClosedLineSegment (Point2 100 100) (Point2 200 100)
                      }
   where
     V2 w h = realToFrac <$> def @AppSettings ^.windowConfig.to SDL.windowInitialSize
@@ -51,7 +56,8 @@ defaultModel = Model { _mousePosition = Nothing
 --------------------------------------------------------------------------------
 -- * Controller
 
-data Action = AddPoint
+data Action = Start
+            | Stop
             deriving (Show,Eq)
 
 type Msgs = [SDL.Event, Action]
@@ -139,6 +145,7 @@ myUI' model screen = draw [ draw menuBar
                   [ draw $ Blank (opaque white)
                   , foldMapOf (points.traverse) drawPt model
                   , draw theHull
+                  , draw $ (model^.path) :+ def @PathAttributes
                   ]
     drawPt p = draw $ Disk p 25 :+ (def&pathColor .~ StrokeAndFill def (opaque red))
 
