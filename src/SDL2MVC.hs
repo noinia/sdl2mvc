@@ -59,13 +59,6 @@ import           SDL2MVC.Send
 import           SDL2MVC.Updated
 import qualified Vary
 
-import           HGeometry.ConvexHull
-import           HGeometry.Polygon.Convex
-import           HGeometry.Polygon
-
-
-import           SDL2MVC.Renderable (Box(..))
-
 
 import           System.IO.Unsafe (unsafePerformIO)
 

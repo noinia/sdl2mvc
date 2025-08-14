@@ -43,7 +43,6 @@ common setup
         , text                    >= 2.1.2        && < 2.2
 
 
-        , hgeometry
 
     default-language: GHC2024
     default-extensions:
@@ -100,21 +99,22 @@ executable sdl2mvc
     -- other-extensions:
     build-depends:
         sdl2mvc
+      , hgeometry
 
     hs-source-dirs:   app
     default-language: GHC2024
 
 
--- executable debugger
---     import:           setup
---     main-is:          Debugger.hs
---     -- other-modules:
---     -- other-extensions:
---     build-depends:
---         sdl2mvc
+executable debugger
+    import:           setup
+    main-is:          Debugger.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends:
+        sdl2mvc
 
---     hs-source-dirs:   app
---     default-language: GHC2024
+    hs-source-dirs:   app
+    default-language: GHC2024
 
 
 test-suite sdl2mvc-test

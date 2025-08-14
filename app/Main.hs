@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
@@ -93,9 +93,6 @@ controller model msg = case first Vary.intoOnly $ Vary.pop msg of
       _                              -> pure Unchanged
 
   Left act -> pure Unchanged
-
-    -- case act of
-    --             AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
 
 
 
