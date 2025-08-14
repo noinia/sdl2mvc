@@ -1,7 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module SDL2MVC.Render
   ( handleRender
-
+  , RendererData(..)
 
   , Animate(..)
   , Continue(..)
@@ -11,6 +11,7 @@ module SDL2MVC.Render
 import           Control.Lens
 import           Effectful
 import           Effectful.Concurrent (Concurrent, threadDelay)
+import qualified GI.Cairo.Render as Cairo
 import           HGeometry.Box
 import           HGeometry.Point
 import           HGeometry.Transformation
@@ -20,40 +21,43 @@ import qualified SDL
 import           SDL2MVC.App
 import           SDL2MVC.Cairo
 import           SDL2MVC.Reaction
-import           SDL2MVC.Updated
 import           SDL2MVC.Send
+import           SDL2MVC.Updated
 import qualified Vary
 
 --------------------------------------------------------------------------------
 
+data RendererData model = RendererData SDL.Renderer
+                                       SDL.Texture
+                                       (model -> RenderTarget -> Cairo.Render ())
+
 -- | Handles a render action
-handleRender              :: IOE :> es
-                          => App es model msgs inMsgs
-                          -> Handler es model outMsgs inMsgs'
-                          -> Handler es model outMsgs (Render : inMsgs')
-handleRender app handler' = \model msg -> case Vary.pop msg of
-    Right Render -> Unchanged <$ runRender app model
+handleRender                     :: IOE :> es
+                                 => RendererData model
+                                 -> Handler es model msgs inMsgs
+                                 -> Handler es model msgs (Render : inMsgs)
+handleRender renderData handler' = \model msg -> case Vary.pop msg of
+    Right Render -> Unchanged <$ runRenderWith renderData model
     Left msg'    -> handler' model msg'
 
-runRender            :: IOE :> es
-                     => App es model msgs inMsgs
-                     -> model
-                     -> Eff es ()
-runRender app model = do let renderer = app^.rendererRef
-                             texture  = app^.textureRef
-                         SDL.TextureInfo _ _ w h <- SDL.queryTexture texture
-                         let screen = Rectangle origin (Point2 (realToFrac w) (realToFrac h))
-                             vp     = Viewport screen identity
-                             renderTarget = RenderTarget texture vp
-                         liftIO $ withCairoTexture texture $ do
-                           (app^.config.appRender) model renderTarget
-                         -- display the drawing
-                         liftIO $ do
-                           SDL.copy renderer texture Nothing Nothing
-                           SDL.present renderer
 
 
-
+-- | Runs the rendering action
+runRenderWith                                              :: IOE :> es
+                                                           => RendererData model
+                                                           -> model
+                                                           -> Eff es ()
+runRenderWith (RendererData renderer texture render) model = do
+    SDL.TextureInfo _ _ w h <- liftIO $ SDL.queryTexture texture
+    let screen = Rectangle origin (Point2 (realToFrac w) (realToFrac h))
+        vp     = Viewport screen identity
+        renderTarget = RenderTarget texture vp
+    liftIO $ withCairoTexture texture $ do
+      render model renderTarget
+    -- display the drawing
+    liftIO $ do
+      SDL.copy renderer texture Nothing Nothing
+      SDL.present renderer
 
 --------------------------------------------------------------------------------
 
@@ -73,20 +77,19 @@ fromFrameRate rate = 1_000_000 `div` rate
 -- | Handles a render action
 --
 --
-handleAnimate              :: forall outMsgs es model msgs inMsgs inMsgs'.
-                              ( Concurrent   :> es
-                              , Send outMsgs :> es
-                              , Render Vary.:| outMsgs
-                              , Animate model Vary.:| outMsgs
-                              )
-                           => App es model msgs inMsgs
-                           -> Handler es model outMsgs inMsgs'
-                           -> Handler es model outMsgs (Animate model : inMsgs')
-handleAnimate app handler' = \model msg -> case Vary.pop msg of
+handleAnimate          :: forall msgs es model inMsgs inMsgs'.
+                          ( Concurrent   :> es
+                          , Send msgs :> es
+                          , Render Vary.:| msgs
+                          , Animate model Vary.:| msgs
+                          )
+                       => Handler es model msgs inMsgs'
+                       -> Handler es model msgs (Animate model : inMsgs')
+handleAnimate handler' = \model msg -> case Vary.pop msg of
     Right (Animate shouldContinue) -> Unchanged <$
-                                      do sendMsg @outMsgs Render
+                                      do sendMsg @msgs Render
                                          case shouldContinue model of
                                            Stop     -> pure ()
                                            Continue -> do threadDelay (fromFrameRate frameRate)
-                                                          sendMsg @outMsgs $ Animate shouldContinue
+                                                          sendMsg @msgs $ Animate shouldContinue
     Left msg'    -> handler' model msg'

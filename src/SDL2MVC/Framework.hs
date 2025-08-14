@@ -4,6 +4,7 @@ module SDL2MVC.Framework
   ( runApp
   , withSDLApp
   , runApp'
+  , withDefaultHandlers
   , withDefaultSDLEvents
   ) where
 
@@ -98,31 +99,6 @@ withSDLApp appCfg withApp = do
                    , _eventQueue  = queue
                    }
 
-
--- | Handles some of the default events, in particular closing the window and quitting
-withDefaultSDLEvents          :: forall msgs inMsgs es model.
-                                 ( Send msgs :> es
-                                 , Shutdown :| msgs
-                                 , SDL.Event :| inMsgs
-                                 )
-                              => Handler es model msgs inMsgs
-                              -> Handler es model msgs inMsgs
-withDefaultSDLEvents handler' = \model msg -> case Vary.into @SDL.Event msg of
-    Just e  -> case SDL.eventPayload e of
-                 SDL.WindowClosedEvent _ -> Unchanged <$ sendMsg @msgs Shutdown
-                 SDL.QuitEvent           -> Unchanged <$ sendMsg @msgs Shutdown
-                 _                       -> handler' model msg
-    Nothing -> handler' model msg
-
--- | Interleave the two lists
-interleaved       :: [a] -> [a] -> [a]
-interleaved xs ys = case xs of
-  []    -> ys
-  x:xs' -> case ys of
-    []    -> xs
-    y:ys' -> x:y:interleaved xs' ys'
-
-
 -- | Runs the app
 runApp'     :: forall es os model msgs inMsgs msgs'.
                ( es ~ Send msgs : os
@@ -166,6 +142,17 @@ runApp' app = runSendWith queue $ go (app^.config.appModel)
           Changed model' -> do sendMsg @msgs Render
                                handleAll model' evts
 
+--------------------------------------------------------------------------------
+
+-- | Interleave the two lists
+interleaved       :: [a] -> [a] -> [a]
+interleaved xs ys = case xs of
+  []    -> ys
+  x:xs' -> case ys of
+    []    -> xs
+    y:ys' -> x:y:interleaved xs' ys'
+
+
 -- type Send msg = Send (LoopAction msg) -- (RenderAction msg))
 
 -- data RenderAction msg = Render
@@ -179,3 +166,37 @@ runApp' app = runSendWith queue $ go (app^.config.appModel)
 
 -- withRerendering :: App m model msg -> App m (Updated model) msg
 -- withRerendering app = app
+
+--------------------------------------------------------------------------------
+
+-- | Handlers some default events already
+withDefaultHandlers             :: forall msgs inMsgs msgs' es model.
+                                   ( Send msgs :> es
+                                   , IOE       :> es
+
+                                   , msgs   ~ (Shutdown : Render : inMsgs)
+                                   , inMsgs ~ (SDL.Event : msgs')
+                                   )
+                                   => Handler es model msgs inMsgs
+                                   -> App  es model msgs inMsgs
+                                   -> Handler es model msgs (Render : inMsgs)
+withDefaultHandlers controller app = handleRender rendererData
+                                   $ withDefaultSDLEvents @msgs controller
+  where
+    rendererData = RendererData (app^.rendererRef) (app^.textureRef) (app^.config.appRender)
+
+
+-- | Handles some of the default events, in particular closing the window and quitting
+withDefaultSDLEvents          :: forall msgs inMsgs es model.
+                                 ( Send msgs :> es
+                                 , Shutdown :| msgs
+                                 , SDL.Event :| inMsgs
+                                 )
+                              => Handler es model msgs inMsgs
+                              -> Handler es model msgs inMsgs
+withDefaultSDLEvents handler' = \model msg -> case Vary.into @SDL.Event msg of
+    Just e  -> case SDL.eventPayload e of
+                 SDL.WindowClosedEvent _ -> Unchanged <$ sendMsg @msgs Shutdown
+                 SDL.QuitEvent           -> Unchanged <$ sendMsg @msgs Shutdown
+                 _                       -> handler' model msg
+    Nothing -> handler' model msg

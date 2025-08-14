@@ -21,7 +21,13 @@ import qualified Vary
 
 --------------------------------------------------------------------------------
 
-type Handler es model (outMsgs :: [Type]) inMsgs =
+-- | The handler type
+--
+-- es     :: the effects the handler may perform
+-- model  :: the model parameter
+-- msgs   :: all messages that our app is supposed to handle
+-- inMsgs :: the messages we can receive/handle
+type Handler es model (msgs :: [Type]) inMsgs =
   model -> Vary.Vary inMsgs -> Eff es (Updated model)
 
 --------------------------------------------------------------------------------
