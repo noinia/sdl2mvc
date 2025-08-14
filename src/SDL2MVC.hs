@@ -11,8 +11,6 @@ module SDL2MVC
   , Render(..), Shutdown(..)
   , Handler
 
-  , Box(..), graphicsOrigin, normalizedCenteredOrigin
-
   -- * Re-exports
   , module Data.Default.Class
   , module Effectful
@@ -329,16 +327,6 @@ data Model2 = Model2 { theText :: Text
 --------------------------------------------------------------------------------
 -- TODO: Move to HGeometry.Viewport
 
--- | Create a viewport whose world-space is \([-1,1] \times [-1,1]\) whose origin is in
--- the center of the screen (which is defined by the given input rectangle)
-normalizedCenteredOrigin      :: ( Fractional r, Rectangle_ rectangle point
-                                 , Point_ point 2 r
-                                 )
-                              => rectangle -> Viewport r
-normalizedCenteredOrigin rect = let Vector2 w h = size rect
-                                    s           = Vector2 (w/2) ((-1)*h/2)
-                                in mkViewport rect $ scaling s
-
 
 -- -- | Creates a viewport in which the origin at the top left of the viewport
 -- --
@@ -353,20 +341,6 @@ normalizedCenteredOrigin rect = let Vector2 w h = size rect
 --     topLeft     = (rect'^.minPoint)&yCoord +~ h
 
 
--- | Same as 'alignedOrigin', except that we also flip the y-direction.
---
--- From the view of a math coordinate system, this puts the origin in the top-left, and
--- has the y-coordinates going down.
---
--- From the view of a "graphics" coordiante system, this actually puts the origin
--- in the bottom left of the rectangle and the y-axixs up; so it turns the
--- viewport into a "proper" math viewport.
-graphicsOrigin      :: Num r => Rectangle (Point 2 r) -> Viewport r
-graphicsOrigin rect = Viewport rect
-                    $     translation ((rect^.minPoint) .-. origin ^+^ Vector2 0 h)
-                      |.| scaling (Vector2 1 (-1))
-  where
-    h = (size rect) ^.component @1 -- height of the rect
 
 --------------------------------------------------------------------------------
 
