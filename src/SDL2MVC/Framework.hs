@@ -125,18 +125,15 @@ interleaved xs ys = case xs of
 
 -- | Runs the app
 runApp'     :: forall es os model msgs inMsgs msgs'.
-               ( es ~ Send msgs : Concurrent : os
-                 -- Send msgs :> es
-               -- , Subset os es
-
+               ( es ~ Send msgs : os
                , IOE        :> os
-               -- , Concurrent :> os
+               , Concurrent :> os
 
                , msgs   ~ (Shutdown : inMsgs)
                , inMsgs ~ (Render : SDL.Event : msgs')
                )
             => App es model msgs inMsgs
-            -> Eff (Concurrent : os) ()
+            -> Eff os ()
 runApp' app = runSendWith queue $ go (app^.config.appModel)
   where
     queue        = app^.eventQueue
