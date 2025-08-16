@@ -19,6 +19,7 @@ import           Effectful.Concurrent.Async (concurrently_)
 import           Effectful.Concurrent.STM
 import           HGeometry.Ext
 import           HGeometry.Kernel
+import           HGeometry.Interval
 import           HGeometry.Transformation
 import           HGeometry.Viewport
 import           Linear (V2(..))
@@ -33,25 +34,40 @@ import qualified Vary
 
 type R = Double
 
+data Canvas = Canvas { _canvasViewPort  :: Viewport R
+                     , _zoomConfig      :: !(ZoomConfig R)
+                     }
+            deriving (Show,Eq)
+
+makeLenses ''Canvas
+
+-- instance HasZoomLevel Canvas R where
+--   zoomLevel = zoomConfig.currentLevel
+
 data Model = Model { _mousePosition :: !(Maybe (Linear.Point V2 Int))
                    , _layers        :: Seq.Seq Layer
-                   , _mainViewPort  :: Viewport R
+                   , _mainCanvas    :: Canvas
                    , _nextLayerName :: NonEmpty.NonEmpty LayerName -- should be a stream
                    }
            deriving (Show,Eq)
 
 makeLenses ''Model
 
+
 defaultModel :: Model
 defaultModel = Model { _mousePosition = Nothing
                      , _layers        = mempty
-                     , _mainViewPort  = graphicsOrigin
-                                        $ Rect mainPanelWidth menuBarHeight w (mainHeight h)
+                     , _mainCanvas    = theCanvas
                      , _nextLayerName = NonEmpty.fromList
                                       $ cycle ["alpha","beta","gamma","delta"]
                      }
   where
     V2 w h = realToFrac <$> def @AppSettings ^.windowConfig.to SDL.windowInitialSize
+
+    theCanvas = Canvas { _canvasViewPort  = graphicsOrigin
+                                          $ Rect mainPanelWidth menuBarHeight w (mainHeight h)
+                       , _zoomConfig      = ZoomConfig (ClosedInterval 0.01 10) 1
+                       }
 
 --------------------------------------------------------------------------------
 -- * Controller
@@ -62,46 +78,66 @@ data Action = AddLayer LayerName Drawing
 type Messages = [SDL.Event, Action]
 
 
--- -- | Handlers some default events already
--- myHandler             :: forall msgs msgs' es model.
---                                    ( Send msgs :> es
---                                    , IOE       :> es
---                                    , msgs ~ [SDL.Event, Action]
---                                    )
---                                 => App es Model msgs
---                                 -> Model -> Vary msgs -> Eff es (Updated Model)
--- myHandler app = handleRender rendererData
---               $ withDefaultSDLEvents @msgs controller
---   where
---     rendererData = RendererData (app^.rendererRef) (app^.textureRef) (app^.config.appRender)
+data ZoomDirection = ZoomIn | ZoomOut deriving (Show,Read,Eq)
 
--- myHandler :: App es Model Messages Messages
---           -> Handler es Model Messages Messages
--- myHandler = withDefaultHandlers controller
-
+-- | The actual update function
 controller           :: forall es inMsgs msgs.
                         ( msgs  ~ [SDL.Event, Action]
                         , Send' Model msgs :> es
                         )
                      => Handler es Model (All Model msgs) msgs
 controller model msg = case first Vary.intoOnly $ Vary.pop msg of
-  Right e -> case SDL.eventPayload e of
-      SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
-                                        in pure $ Changed (model&mousePosition ?~ p)
+    Right e -> case SDL.eventPayload e of
+        SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
+                                          in pure $ Changed (model&mousePosition ?~ p)
 
-      SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
-        SDL.Pressed -> case asPoint' <$> model^.mousePosition of
-                         Nothing -> pure Unchanged
-                         Just p' -> do let p              = toWorldIn (model^.mainViewPort) p'
-                                           (layer,model') = takeNextLayer model
-                                       sendMsg @(All Model msgs) $ AddLayer layer (drawPt p)
-                                       pure $ Changed model'
-        _           -> pure Unchanged
+        SDL.MouseButtonEvent mouseData -> case SDL.mouseButtonEventMotion mouseData of
+          SDL.Pressed -> case asPoint' <$> model^.mousePosition of
+                           Nothing -> pure Unchanged
+                           Just p' -> do let p              = toWorldIn (canvas^.canvasViewPort) p'
+                                             (layer,model') = takeNextLayer model
+                                         sendMsg @(All Model msgs) $ AddLayer layer (drawPt p)
+                                         pure $ Changed model'
+          _           -> pure Unchanged
 
-      _                              -> pure Unchanged
 
-  Left act -> case act of
-                AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
+
+        SDL.MouseWheelEvent mouseData -> let V2 _ delta = SDL.mouseWheelEventPos mouseData
+                                             dir   = if delta < 0 then ZoomOut else ZoomIn
+                                         in pure $ model&mainCanvas %%~ updateZoom dir
+
+        _                              -> pure Unchanged
+
+    Left act -> case act of
+                  AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
+
+
+  where
+    canvas = model^.mainCanvas
+
+-- | Update the canvas by either  zooming in or zooming out.
+-- zooming happens w.r.t the center of the viewport
+updateZoom            :: ZoomDirection -> Canvas -> Updated Canvas
+updateZoom dir canvas
+    | z' == z   = Unchanged
+    | otherwise = Changed $ canvas&zoomConfig.currentLevel .~ z'
+                                  &canvasViewPort          %~ applyScaling delta
+  where
+    z  = canvas^.zoomConfig.currentLevel
+    z' = clampTo (canvas^.zoomConfig.range) (z + delta)
+    delta = case dir of
+              ZoomIn  -> 0.05
+              ZoomOut -> (-1)*0.05
+
+    applyScaling delta' vp = vp&worldToHost %~ (|.| uniformScalingWrt c (1+delta'))
+      where
+        c = toWorldIn vp $ centerPoint $ vp^.viewPort
+
+
+-- uniformScalingWrt          :: (Point_ point d r, Vector)
+--                            =>
+uniformScalingWrt p lambda =
+  translation (p^.vector) |.| uniformScaling lambda |.| translation (negated $ p^.vector)
 
 
 drawPt p = draw $ Disk p 25 :+ (def&pathColor .~ StrokeAndFill def (opaque red))
@@ -112,6 +148,10 @@ asPoint' p = p^.asPoint & coordinates %~ realToFrac
 takeNextLayer model = ( NonEmpty.head $ model^.nextLayerName
                       , model&nextLayerName %~ NonEmpty.fromList . NonEmpty.tail
                       )
+
+
+
+
 
 --------------------------------------------------------------------------------
 
@@ -165,11 +205,13 @@ myUI' model screen = draw [ draw menuBar
     mainArea  = drawIn mainAreaVP $
                   [ draw $ Blank (opaque white)
                   , foldMapOf (layers.traverse) drawLayer model
+                  , draw $ Rect 0 0 100 (100 :: Double)
+                         :+ (def&pathColor .~ StrokeAndFill def (red `withOpacity` 0.5))
                   ]
 
     mainPanelVP = alignedOrigin $ Rect 0 menuBarHeight w (mainHeight h)
     -- mainAreaVP  = normalizedCenteredOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight
-    mainAreaVP  = model^.mainViewPort
+    mainAreaVP  = model^.mainCanvas.canvasViewPort
 
 
 ----------------------------------------
