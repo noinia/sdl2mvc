@@ -65,7 +65,7 @@ withSDLApp          :: forall es msgs os model.
                        )
                     => AppConfig es model msgs
                     -- ^ The configuration describing how to set up our application
-                    -> (App es model msgs -> Eff (Concurrent : os) ())
+                    -> (App es model msgs -> Eff es ())
                     -- ^ the continuation; i.e. the actual application
                     -> Eff os ()
 withSDLApp appCfg withApp = do
@@ -87,11 +87,12 @@ withSDLApp appCfg withApp = do
                               pure q
 
 
-    let withApp' :: App es model msgs -> Eff (Resource : Concurrent : os) ()
+    let withApp' :: App es model msgs -> Eff (Send' model msgs : Resource : Concurrent : os) ()
         withApp' = inject . withApp
+        withAppX = runSendWith queue . withApp'
 
     -- run the actuall application
-    withApp' $ App { _config      = appCfg
+    withAppX $ App { _config      = appCfg
                    , _windowRef   = window'
                    , _rendererRef = renderer'
                    , _textureRef  = texture'
@@ -99,16 +100,19 @@ withSDLApp appCfg withApp = do
                    }
 
 -- | Runs the app
-runApp'     :: forall es os model msgs msgs'.
-               ( es ~ Send' model msgs : os
-               , IOE        :> os
+runApp'     :: forall es model msgs msgs'.
+               ( Send' model msgs :> es
+               , IOE :> es
                , Concurrent :> es
-               , Concurrent :> os
+
+               --   es ~ Send' model msgs : os
+               -- , IOE        :> os
+               -- , Concurrent :> os
                , msgs ~ (SDL.Event : msgs')
                )
             => App es model msgs
-            -> Eff os ()
-runApp' app = runSendWith queue $ go (app^.config.appModel)
+            -> Eff es ()
+runApp' app = go (app^.config.appModel)
   where
     queue        = app^.eventQueue
 

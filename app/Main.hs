@@ -56,8 +56,8 @@ defaultModel = Model { _mousePosition = Nothing
 --------------------------------------------------------------------------------
 -- * Controller
 
-data Action = Start
-            | Stop
+data Action = StartAnimate
+            | StopAnimate
             deriving (Show,Eq)
 
 type Msgs = [SDL.Event, Action]
@@ -65,10 +65,13 @@ type Msgs = [SDL.Event, Action]
 
 controller           :: forall es.
                        ( Send' Model Msgs :> es
+                       , IOE :> es
                        )
                      => Handler es Model (All Model Msgs) Msgs
 controller model msg = case first Vary.intoOnly $ Vary.pop msg of
   Right e -> case SDL.eventPayload e of
+
+
       SDL.MouseMotionEvent mouseData -> let p = fromIntegral <$> SDL.mouseMotionEventPos mouseData
                                         in pure $ Changed (model&mousePosition ?~ p)
 
@@ -82,9 +85,55 @@ controller model msg = case first Vary.intoOnly $ Vary.pop msg of
                                      in pure $ Changed (model&points %~ (p:))
         _           -> pure Unchanged
 
+      SDL.TextInputEvent txtData -> case SDL.textInputEventText txtData of
+        "s" -> Unchanged <$ sendMsg @(All Model Msgs) StartAnimate
+        "t" -> Unchanged <$ sendMsg @(All Model Msgs) StopAnimate
+        _   -> pure Unchanged
       _                              -> pure Unchanged
 
-  Left act -> pure Unchanged
+  Left act -> case act of
+    StartAnimate -> do let until m | m^.time >= 1 = Stop
+                                   | otherwise    = Continue
+
+                       liftIO $ putStrLn "Started!"
+                       sendMsg @(All Model Msgs) (Animate until)
+                         -- hmm, this is not very useful at this point ...
+                         -- time should somehow change
+                       pure $ Changed (model&time .~ 0)
+    StopAnimate  -> pure Unchanged
+
+
+-- [Event {eventTimestamp = 2299
+--   , eventPayload =
+
+
+--     KeyboardEvent (KeyboardEventData {keyboardEventWindow = Just (Window 0x00006000029bc4b0)
+--                                    , keyboardEventKeyMotion = Pressed
+--                                    , keyboardEventRepeat = False
+--                                    , keyboardEventKeysym =
+--                                        Keysym {keysymScancode = Scancode {unwrapScancode = 22}
+--                                               , keysymKeycode = Keycode {unwrapKeycode = 115}
+--                                               , keysymModifier = KeyModifier
+--                                                                  { keyModifierLeftShift = False
+--                                                                  , keyModifierRightShift = False
+--                                                                  , keyModifierLeftCtrl = False
+--                                                                  , keyModifierRightCtrl = False
+--                                                                  , keyModifierLeftAlt = False
+--                                                                  , keyModifierRightAlt = False
+--                                                                  , keyModifierLeftGUI = False
+--                                                                  , keyModifierRightGUI = False
+--                                                                  , keyModifierNumLock = False
+--                                                                  , keyModifierCapsLock = False
+--                                                                  , keyModifierAltGr = False}
+--                                               }
+--                                    })}
+
+
+-- ,Event {eventTimestamp = 2300, eventPayload = TextInputEvent (TextInputEventData {textInputEventWindow = Just (Window 0x00006000029bc4b0), textInputEventText = "s"})}]
+
+
+-- [Event {eventTimestamp = 2354, eventPayload = KeyboardEvent (KeyboardEventData {keyboardEventWindow = Just (Window 0x00006000029bc4b0), keyboardEventKeyMotion = Released, keyboardEventRepeat = False, keyboardEventKeysym = Keysym {keysymScancode = Scancode {unwrapScancode = 22}, keysymKeycode = Keycode {unwrapKeycode = 115}, keysymModifier = KeyModifier {keyModifierLeftShift = False, keyModifierRightShift = False, keyModifierLeftCtrl = False, keyModifierRightCtrl = False, keyModifierLeftAlt = False, keyModifierRightAlt = False, keyModifierLeftGUI = False, keyModifierRightGUI = False, keyModifierNumLock = False, keyModifierCapsLock = False, keyModifierAltGr = False}}})}]
+
 
     -- case act of
     --             AddLayer name d -> pure $ Changed (model&layers %~ (Seq.:|> Layer name Visible d))
@@ -146,6 +195,7 @@ myUI' model screen = draw [ draw menuBar
                   , foldMapOf (points.traverse) drawPt model
                   , draw theHull
                   , draw $ (model^.path) :+ def @PathAttributes
+                  , drawPt (interpolate (model^.time) $ model^.path)
                   ]
     drawPt p = draw $ Disk p 25 :+ (def&pathColor .~ StrokeAndFill def (opaque red))
 

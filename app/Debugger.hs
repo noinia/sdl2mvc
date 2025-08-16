@@ -13,6 +13,10 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified Data.Text as Text
+import           Effectful
+import           Effectful.Concurrent (threadDelay)
+import           Effectful.Concurrent.Async (concurrently_)
+import           Effectful.Concurrent.STM
 import           HGeometry.Ext
 import           HGeometry.Kernel
 import           HGeometry.Transformation
@@ -210,18 +214,38 @@ traceDraw name g = undefined -- unsafePerformIO $ runEff $ traceDraw' name g
 
 -- | Send a trace message
 traceDraw'        :: forall es g.
-                     (Send Messages :> es, Drawable g)
+                     (Send' Model Messages :> es, Drawable g)
                   => String -> g -> Eff es ()
-traceDraw' name g = sendMsg @Messages $ AddLayer (Text.pack name) (draw g)
+traceDraw' name g = sendMsg @(All Model Messages) $ AddLayer (Text.pack name) (draw g)
+
 
 
 
 main :: IO ()
-main = runEff $ runApp $
-       AppConfig
-         { _appModel        = defaultModel
-         , _handler         = const controller
-         , _initialMessages = []
-         , _appRender       = myDraw
-         , _settings        = def&windowTitle .~ "HGeometry Debugger"
-         }
+main = runEff . runDebuggerWith $ \app -> do
+          liftIO $ putStrLn "woei"
+          threadDelay 3_000_000
+          traceDraw' "debugging" (Rect 0 10 100 (200 :: Double) :+ (def @PathAttributes))
+
+debuggerConfig :: ( es ~ Send' Model Messages : Concurrent : os
+                  , IOE :> os
+                  )
+               => AppConfig es Model Messages
+debuggerConfig = AppConfig
+                 { _appModel        = defaultModel
+                 , _handler         = const controller
+                 , _initialMessages = []
+                 , _appRender       = myDraw
+                 , _settings        = def&windowTitle .~ "HGeometry Debugger"
+                 }
+
+runDebuggerWithIO     :: IO () -> IO ()
+runDebuggerWithIO act = runEff . runDebuggerWith $ const (liftIO act)
+
+
+runDebuggerWith     :: ( es ~ Send' Model Messages : Concurrent : os
+                       , IOE :> os
+                       )
+                    => (App es Model Messages -> Eff es ()) -> Eff os ()
+runDebuggerWith act = withSDLApp debuggerConfig $ \app ->
+  concurrently_ (runApp' app) (act app)

@@ -8,7 +8,7 @@ module SDL2MVC
   , module SDL2MVC.Updated
   , module SDL2MVC.Render
   , module SDL2MVC.Drawing
-  , Render(..), Shutdown(..)
+  , Render(..), Shutdown(..), Animate(..), Continue(..)
   , Handler
 
   -- * Re-exports

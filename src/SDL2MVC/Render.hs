@@ -73,6 +73,7 @@ fromFrameRate rate = 1_000_000 `div` rate
 handleAnimate          :: forall msgs es model.
                           ( Concurrent   :> es
                           , Send' model msgs :> es
+                          , IOE :> es
                           )
                        => Handler es model (All model msgs) msgs
                        -> Handler es model (All model msgs) (Animate model : msgs)
@@ -82,6 +83,7 @@ handleAnimate handler' = \model msg -> case Vary.pop msg of
                                          case shouldContinue model of
                                            Stop     -> pure ()
                                            Continue -> do threadDelay (fromFrameRate frameRate)
+                                                          liftIO $ putStrLn "go"
                                                           sendMsg @(All model msgs) $
                                                             Animate shouldContinue
     Left msg'    -> handler' model msg'
