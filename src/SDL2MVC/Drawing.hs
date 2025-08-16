@@ -146,8 +146,10 @@ drawInViewport      :: ( Drawable t, IsTransformable t
 
                        , Show t
                        ) => Viewport Double -> t -> Drawing
-drawInViewport vp = (<> drawViewport vp)
-                  . draw . toHostFrom vp
+drawInViewport vp = draw . toHostFrom vp
+-- (<> drawViewport vp) .
+
+-- TODO we may want to do some manual clipping here
 
 
 --------------------------------------------------------------------------------

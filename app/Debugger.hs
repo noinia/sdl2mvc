@@ -192,7 +192,7 @@ myUI' model screen = draw [ draw menuBar
                        , mainArea
                        ]
 
-    mainPanel = drawIn mainPanelVP $
+    mainPanel = drawIn mainPanelVP
                   [ draw $ Blank panelColor
                   , rows [ button (def&pathColor .~ StrokeAndFill def (opaque red))
                                   [ draw $ TextLabel (l^.layerName) (origin @(Point 2 Double))
@@ -200,14 +200,15 @@ myUI' model screen = draw [ draw menuBar
                                   ]
                          | l <- model^..layers.traverse
                          ]
-                  ]
+                  ] <> draw (mainPanelVP^.viewPort :+ def @PathAttributes)
 
-    mainArea  = drawIn mainAreaVP $
+
+    mainArea  = drawIn mainAreaVP
                   [ draw $ Blank (opaque white)
                   , foldMapOf (layers.traverse) drawLayer model
                   , draw $ Rect 0 0 100 (100 :: Double)
                          :+ (def&pathColor .~ StrokeAndFill def (red `withOpacity` 0.5))
-                  ]
+                  ] <> draw (mainAreaVP^.viewPort :+ def @PathAttributes)
 
     mainPanelVP = alignedOrigin $ Rect 0 menuBarHeight w (mainHeight h)
     -- mainAreaVP  = normalizedCenteredOrigin $ Rect mainPanelWidth menuBarHeight w mainHeight

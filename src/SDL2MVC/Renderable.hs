@@ -5,7 +5,7 @@ module SDL2MVC.Renderable
   ) where
 
 import           Control.Lens hiding (elements)
-import           Data.Colour
+import           Data.Colour hiding (over)
 import qualified Data.Colour as Colour
 import           Data.Colour.Names (red,blue,white,green,orange)
 import           Data.Colour.SRGB (RGB(..), toSRGB)
@@ -102,12 +102,20 @@ toCairoMatrix m = case m&elements %~ realToFrac of
          ) -> CairoM.Matrix a d b e c f
   _        -> error "toCairoMatrix: Don't know how to convert this matrix!"
 
--- | Render stuff within the given viewport
-render'           :: Real r => Viewport r -> Cairo.Render () -> Cairo.Render ()
-render' vp render = do Cairo.save
-                       Cairo.transform (vp^.worldToHost.transformationMatrix.to toCairoMatrix)
-                       render
-                       Cairo.restore
+-- -- | Render stuff within the given viewport
+-- render'           :: Real r => Viewport r -> Cairo.Render () -> Cairo.Render ()
+-- render' vp render = do Cairo.save
+--                        -- -- set clipping
+--                        let Rect x y w h = over coordinates realToFrac <$> vp^.viewPort
+--
+--                        setStroke $ Stroke 1 (opaque blue)
+--                        Cairo.rectangle x y w h
+--                        -- Cairo.clip
+--
+--                        Cairo.transform (vp^.worldToHost.transformationMatrix.to toCairoMatrix)
+--                        render
+--                        Cairo.restore -- this also drops the clipping
+
 
 -- | Set the stroke
 setStroke s = do Cairo.setLineWidth $ s^.strokeWidth
@@ -149,7 +157,7 @@ ellipse ats e = withStrokeAndFill (ats^.pathColor) $ do
 
 -- | Extract an alphacolor into a tuple
 toRGBA     :: Color -> (RGB Double,Double)
-toRGBA col = ( toSRGB $ col `Data.Colour.over` black
+toRGBA col = ( toSRGB $ col `Colour.over` black
              , alphaChannel col
              )
 
